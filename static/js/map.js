@@ -34,6 +34,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const drawnItems = new L.FeatureGroup();
     map.addLayer(drawnItems);
     
+    // Store non-point geometries in a separate layer group
+    const nonPointLayers = new L.FeatureGroup();
+    map.addLayer(nonPointLayers);
+    
+    // Map to store references between center markers and actual geometries
+    const markerToGeometryMap = new Map();
+    
     // Initialize draw control
     const drawControl = new L.Control.Draw({
         edit: {
@@ -187,7 +194,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             className: `marker-cluster marker-cluster-${size}`,
                             iconSize: L.point(40, 40)
                         });
-                    }
+                    },
+                    removeOutsideVisibleBounds: true,
+                    animate: true,
+                    animateAddingMarkers: true
                 });
                 
                 drawings.forEach(drawing => {
@@ -274,8 +284,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Points go to the cluster
                                     markerCluster.addLayer(layer);
                                 } else {
-                                    // Other geometries (polygons, lines) go directly to the map
-                                    layer.addTo(map);
+                                    // For polygons and polylines, add them directly to the map
+                                    nonPointLayers.addLayer(layer);
                                     
                                     // Add a popup with the name and description for non-point features
                                     if (drawing.name) {
@@ -284,6 +294,31 @@ document.addEventListener('DOMContentLoaded', function() {
                                             popupContent += `<br>${drawing.description}`;
                                         }
                                         layer.bindPopup(popupContent);
+                                    }
+                                    
+                                    // Also create a center point marker for the polygon/polyline to include in clustering
+                                    try {
+                                        // Get the center of the bounds
+                                        const bounds = layer.getBounds();
+                                        const center = bounds.getCenter();
+                                        
+                                        // Create an invisible marker at the center
+                                        const centerMarker = L.marker(center, {
+                                            opacity: 0,  // Make it invisible
+                                            interactive: false  // Not interactive
+                                        });
+                                        
+                                        // Add data to the marker for reference
+                                        centerMarker.drawingId = drawing.id;
+                                        centerMarker.drawingType = drawing.geometry.type;
+                                        
+                                        // Add to cluster
+                                        markerCluster.addLayer(centerMarker);
+                                        
+                                        // Store reference between center marker and actual geometry
+                                        markerToGeometryMap.set(centerMarker, layer);
+                                    } catch (e) {
+                                        console.error('Error creating center marker for non-point geometry:', e);
                                     }
                                 }
                             });
@@ -295,6 +330,49 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Add the cluster group to the map
                 map.addLayer(markerCluster);
+                
+                // Function to update visibility of non-point geometries
+                function updateGeometryVisibility() {
+                    // Get all clustered markers
+                    const clusteredMarkers = new Set();
+                    markerCluster.eachLayer(function(marker) {
+                        const parent = markerCluster.getVisibleParent(marker);
+                        if (parent && parent !== marker) {
+                            clusteredMarkers.add(marker);
+                        }
+                    });
+                    
+                    // Update visibility of all non-point geometries
+                    markerToGeometryMap.forEach((geometry, marker) => {
+                        if (clusteredMarkers.has(marker)) {
+                            // If marker is in a cluster, hide the actual geometry
+                            geometry.setStyle({ opacity: 0, fillOpacity: 0 });
+                        } else {
+                            // If marker is not in a cluster, show the actual geometry
+                            geometry.setStyle({ opacity: 0.9, fillOpacity: 0.2 });
+                        }
+                    });
+                }
+                
+                // Update visibility on zoom and when clusters change
+                map.on('zoomend', updateGeometryVisibility);
+                markerCluster.on('animationend', updateGeometryVisibility);
+                markerCluster.on('spiderfied', updateGeometryVisibility);
+                markerCluster.on('unspiderfied', updateGeometryVisibility);
+                
+                // Initial update
+                updateGeometryVisibility();
+                
+                // Hide non-point geometries when they are part of a cluster
+                markerCluster.on('clusterclick', function(cluster) {
+                    // Let the default behavior handle the zoom
+                    // updateGeometryVisibility will be called after zoom animation
+                });
+                
+                // Show non-point geometries when the cluster is expanded
+                markerCluster.on('clusterexpand', function(cluster) {
+                    // Let the updateGeometryVisibility function handle this
+                });
                 
                 // If there are parks, zoom to fit them all
                 if (markerCluster.getLayers().length > 0) {
@@ -311,6 +389,31 @@ document.addEventListener('DOMContentLoaded', function() {
         // Clear existing layers
         drawnItems.clearLayers();
         
+        // Temporarily hide all non-point layers and marker cluster
+        nonPointLayers.eachLayer(function(layer) {
+            layer.setStyle({ opacity: 0, fillOpacity: 0 });
+        });
+        markerCluster.clearLayers();
+        
+        // Show back button
+        const backButton = document.createElement('button');
+        backButton.id = 'back-to-map-btn';
+        backButton.className = 'btn btn-primary back-to-map';
+        backButton.innerHTML = '&larr; Back to Map';
+        backButton.addEventListener('click', backToFullMap);
+        
+        // Add the button to the map
+        const backButtonControl = L.control({ position: 'topleft' });
+        backButtonControl.onAdd = function() {
+            const div = L.DomUtil.create('div', 'back-button-container');
+            div.appendChild(backButton);
+            return div;
+        };
+        backButtonControl.addTo(map);
+        
+        // Store the control for later removal
+        map.backButtonControl = backButtonControl;
+        
         // Add the GeoJSON to the map with custom styling
         const geoJSONLayer = L.geoJSON(drawing.geometry, {
             style: function(feature) {
@@ -323,7 +426,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
             },
             pointToLayer: function(feature, latlng) {
-                return L.circleMarker(latlng, {
+                const marker = L.circleMarker(latlng, {
                     radius: 8,
                     fillColor: "#DB4437", // Google red
                     color: "#FFFFFF",
@@ -331,6 +434,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     opacity: 1,
                     fillOpacity: 1
                 });
+                
+                // Store the drawing type for reference
+                marker.drawingType = 'Point';
+                
+                return marker;
             }
         });
         
@@ -342,6 +450,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     popupContent += `<br>${drawing.description}`;
                 }
                 layer.bindPopup(popupContent);
+            }
+            
+            // Store drawing type for non-point features
+            if (!(layer instanceof L.CircleMarker) && drawing.geometry.type) {
+                layer.drawingType = drawing.geometry.type;
             }
             
             drawnItems.addLayer(layer);
@@ -359,6 +472,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 layers[0].openPopup();
             }
         }
+    }
+    
+    // Function to go back to the full map view
+    function backToFullMap() {
+        // Clear the individual view
+        drawnItems.clearLayers();
+        
+        // Remove the back button
+        if (map.backButtonControl) {
+            map.removeControl(map.backButtonControl);
+            delete map.backButtonControl;
+        }
+        
+        // Reload all drawings
+        loadDrawings();
     }
     
     // Function to edit a drawing

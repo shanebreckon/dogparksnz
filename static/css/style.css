@@ -142,6 +142,19 @@ body {
     color: white;
 }
 
+/* Back to Map Button */
+.back-button-container {
+    margin: 10px;
+}
+
+.back-to-map {
+    padding: 8px 12px;
+    font-size: 14px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 1000;
+}
+
+/* Marker Cluster Colors */
 .marker-cluster-small {
     background-color: rgba(66, 133, 244, 0.6);  /* Google blue */
 }
