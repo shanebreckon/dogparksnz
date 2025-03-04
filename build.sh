@@ -1,4 +1,5 @@
 #!/bin/bash
+echo "Installing dependencies..."
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-gunicorn --bind=0.0.0.0 --timeout 600 app:app
+echo "Dependencies installed successfully!"
