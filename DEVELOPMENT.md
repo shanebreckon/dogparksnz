@@ -1,6 +1,6 @@
-# Development Guide
+# Development Guide for Dog Parks NZ
 
-This document provides detailed information about the development workflow for the Map Drawing Application, with a focus on using Windsurf IDE and its AI assistant, Cascade.
+This document provides detailed information about the development workflow for the Dog Parks NZ Application, with a focus on using Windsurf IDE and its AI assistant, Cascade.
 
 ## Why This Document Exists
 
@@ -27,6 +27,88 @@ DogParksNZv2/
 ├── requirements.txt     # Python dependencies
 ├── routes.py            # API routes and endpoints
 └── startup.txt          # Azure startup configuration
+```
+
+## Map Visualization Components
+
+### Key JavaScript Files
+
+- **map.js**: Contains all map initialization, clustering, and interaction logic
+  - Handles marker clustering with Leaflet.markercluster
+  - Manages geometry visibility based on zoom level
+  - Implements custom cluster styling and behavior
+
+### External Libraries
+
+- **Leaflet.js**: Core mapping library
+- **Leaflet.draw**: Drawing tools for creating geometries
+- **Leaflet.markercluster**: Advanced clustering functionality
+
+### CSS Components
+
+- **style.css**: Contains styling for:
+  - Marker clusters with Google-inspired color scheme
+  - Back to Map button
+  - Map controls and UI elements
+
+## Map Clustering Implementation
+
+### Marker to Geometry Mapping
+
+The application uses a sophisticated approach to handle different geometry types:
+
+```javascript
+// Create a map to track which marker corresponds to which geometry
+const markerToGeometryMap = new Map();
+
+// For non-point geometries (polygons, lines)
+const centerPoint = getCenterPoint(geometry);
+const invisibleMarker = L.marker(centerPoint, {
+    opacity: 0,
+    interactive: false
+});
+markerToGeometryMap.set(invisibleMarker, geometryLayer);
+```
+
+### Visibility Management
+
+Geometry visibility is controlled dynamically:
+
+```javascript
+// Function to update visibility of non-point geometries
+function updateGeometryVisibility() {
+    // Get all clustered markers
+    const clusteredMarkers = new Set();
+    markerCluster.eachLayer(function(marker) {
+        const parent = markerCluster.getVisibleParent(marker);
+        if (parent && parent !== marker) {
+            clusteredMarkers.add(marker);
+        }
+    });
+    
+    // Update visibility of all non-point geometries
+    markerToGeometryMap.forEach((geometry, marker) => {
+        if (clusteredMarkers.has(marker)) {
+            // If marker is in a cluster, hide the actual geometry
+            geometry.setStyle({ opacity: 0, fillOpacity: 0 });
+        } else {
+            // If marker is not in a cluster, show the actual geometry
+            geometry.setStyle({ opacity: 0.9, fillOpacity: 0.2 });
+        }
+    });
+}
+```
+
+### Event Handling
+
+The application listens to various events to update geometry visibility:
+
+```javascript
+// Update visibility on zoom and when clusters change
+map.on('zoomend', updateGeometryVisibility);
+markerCluster.on('animationend', updateGeometryVisibility);
+markerCluster.on('spiderfied', updateGeometryVisibility);
+markerCluster.on('unspiderfied', updateGeometryVisibility);
 ```
 
 ## Setting Up Windsurf for Development
@@ -103,37 +185,33 @@ Cascade is an AI assistant integrated with Windsurf that can help with various d
 2. **Running the Application**
    - Start the Flask server: `python app.py`
    - Access the application at `http://localhost:5000`
+   - Make changes to the code
+   - Refresh the browser to see changes
 
-3. **Making Changes**
-   - Create a new branch for your feature/fix
-   - Make your changes
-   - Test your changes locally
-   - Commit with clear messages
+3. **Working with Map Features**
+   - Modify `map.js` for map-related functionality
+   - Update `style.css` for styling changes
+   - Use the browser console for debugging
 
-### Database Management
-
-1. **Local SQLite Database**
-   - The application uses SQLite by default for development
-   - The database file is created automatically on first run
-   - Use SQLite Viewer extension to inspect the database
-
-2. **PostgreSQL for Production**
-   - Configure PostgreSQL connection in `.env` file
-   - Install PostGIS extension for spatial data
+4. **Database Operations**
+   - Use SQLite for development
+   - Access the database using SQLite Viewer extension
+   - Test database migrations locally before deployment
 
 ### Testing
 
 1. **Manual Testing**
-   - Test all features after making changes
-   - Verify that drawings can be created, viewed, edited, and deleted
-   - Check that the map and drawing tools work correctly
+   - Test map functionality across different zoom levels
+   - Verify that clustering works correctly
+   - Check that non-point geometries show/hide appropriately
+   - Test the Back to Map button functionality
 
-2. **Automated Testing**
-   - Run tests with `pytest`
-   - Add new tests for new features
+2. **Browser Compatibility**
+   - Test in Chrome, Firefox, Safari, and Edge
+   - Verify mobile responsiveness
+   - Check touch interactions for mobile devices
 
-## Deployment
-
+### Deployment
 ### GitHub to Azure Deployment
 
 1. **Prerequisites**

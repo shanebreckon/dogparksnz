@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Map Drawing Application will be documented in this file.
+All notable changes to the Dog Parks NZ Application will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -11,8 +11,38 @@ This changelog tracks the history of changes to the project, helping users and d
 
 ## [Unreleased]
 
+### Planned
+- Search functionality for finding parks by name or features
+- User accounts with favorites and reviews
+- Mobile optimization with geolocation
+- Advanced filtering options for park amenities
+- Dark mode for improved night viewing
+- Performance optimizations for large datasets
+
 ### Added
 - Future features will be listed here before they are released
+
+## [0.2.0] - 2025-03-05
+
+### Added
+- Advanced marker clustering with Leaflet.markercluster
+- Multiple basemap options (CartoDB Voyager and Esri Satellite)
+- Dynamic visibility management for non-point geometries
+- "Back to Map" button for returning to full map view
+- Custom cluster styling with Google-inspired color scheme
+- Scale control for distance measurement
+- Event listeners for spiderfied/unspiderfied clusters
+
+### Changed
+- Replaced default OpenStreetMap tiles with CartoDB Voyager
+- Improved marker clustering to include all geometry types
+- Enhanced geometry visibility based on zoom level and cluster state
+- Optimized cluster click behavior
+
+### Fixed
+- Non-point geometries now properly show/hide based on cluster state
+- Fixed visibility issues when zooming in/out
+- Improved handling of geometry center points for clustering
 
 ## [0.1.0] - 2025-03-04
 
@@ -54,5 +84,6 @@ When making changes to the project:
    - Add a new "Unreleased" section at the top
    - Update links at the bottom of the file
 
-[Unreleased]: https://github.com/yourusername/DogParksNZv2/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yourusername/DogParksNZv2/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/yourusername/DogParksNZv2/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/yourusername/DogParksNZv2/releases/tag/v0.1.0

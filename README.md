@@ -1,21 +1,31 @@
-# Map Drawing Application
+# Dog Parks NZ - Interactive Map Application
 
-A web application that allows users to draw on maps and store the data in a database. This tool is designed to help users create, edit, and manage geographic data through an intuitive drawing interface.
+A web application that allows users to explore dog parks and dog-friendly areas across New Zealand through an interactive map interface. The application provides comprehensive information about each location and features advanced map visualization capabilities.
 
 ## Features
 
-- Web-based admin interface
-- OpenStreetMap integration
-- Drawing capabilities using Leaflet.js
-- RESTful API for CRUD operations
+- Interactive map with advanced marker clustering
 - Support for various geometry types (points, lines, polygons)
-- Persistent storage of map drawings
+- Dynamic visibility of geometries based on zoom level
+- Google Maps-inspired UI with multiple basemap options
+- Detailed information about each dog park location
+- RESTful API for CRUD operations
+- Responsive design for desktop and mobile devices
+
+## Map Visualization Enhancements
+
+- **Advanced Marker Clustering**: Intelligently groups nearby locations for cleaner visualization
+- **Dynamic Geometry Visibility**: Shows/hides geometries based on zoom level and cluster state
+- **Multiple Basemap Options**: CartoDB Voyager (default) and Esri Satellite view
+- **Back to Map Navigation**: Easy return to full map view after viewing specific locations
+- **Custom Cluster Styling**: Google-inspired color scheme with count indicators
 
 ## Technology Stack
 
-- Frontend: HTML, CSS, JavaScript, Leaflet.js
-- Backend: Python Flask
-- Database: SQLite (development), PostgreSQL with PostGIS (production)
+- **Frontend**: HTML, CSS, JavaScript, Leaflet.js, Leaflet.markercluster
+- **Backend**: Python Flask
+- **Database**: SQLite (development), PostgreSQL with PostGIS (production)
+- **Map Libraries**: Leaflet.js, Leaflet.draw, Leaflet.markercluster
 
 ## Setup and Installation
 
@@ -54,21 +64,34 @@ A web application that allows users to draw on maps and store the data in a data
 
 ## Basic Usage
 
-1. **Creating a Drawing**:
-   - Navigate to the main page
-   - Use the drawing tools on the left side of the map
+1. **Exploring the Map**:
+   - Navigate the map using standard pan and zoom controls
+   - Click on clusters to zoom in and see individual locations
+   - Toggle between Map and Satellite view using the layer control
+
+2. **Viewing Location Details**:
+   - Click on a marker to view information about the location
+   - For non-point geometries (polygons/lines), click on the shape to see details
+   - Use the "Back to Map" button to return to the full map view
+
+3. **Adding New Locations** (Admin):
+   - Use the drawing tools to create new geometries
    - Fill in the name and description
-   - Click "Save Drawing"
+   - Click "Save Drawing" to store the location
 
-2. **Viewing Drawings**:
-   - All saved drawings appear in the list on the right
-   - Click "View" to see a drawing on the map
+## Technical Implementation Details
 
-3. **Editing Drawings**:
-   - Select a drawing from the list
-   - Click "Edit"
-   - Modify the drawing using the tools
-   - Update the information and save
+- **Marker Clustering**: Uses Leaflet.markercluster with custom configuration
+- **Geometry Management**: Tracks relationships between markers and actual geometries
+- **Visibility Control**: Dynamic showing/hiding of geometries based on cluster state
+- **Event Handling**: Responds to zoom, cluster animation, and spiderfy events
+
+## Development Notes
+
+- The clustering mechanism includes all geometry types in cluster counts
+- Non-point geometries use invisible center markers for clustering
+- Custom event handlers manage the visibility of geometries based on zoom level
+- The application uses a Google-inspired color scheme for map elements
 
 ## Documentation
 
@@ -76,7 +99,3 @@ A web application that allows users to draw on maps and store the data in a data
 - [Changelog](CHANGELOG.md) - History of changes and versions
 - [Development Guide](DEVELOPMENT.md) - Detailed development workflow
 - [Troubleshooting](TROUBLESHOOTING.md) - Solutions to common issues
-
-## Deployment
-
-This application is configured for deployment to Azure via GitHub Actions. See the [Development Guide](DEVELOPMENT.md) for detailed deployment instructions.
