@@ -103,6 +103,15 @@ This troubleshooting guide helps users and developers quickly resolve common pro
 - Ensure the startup command is correct
 - Check for any missing dependencies
 
+#### Issue: ZIP Deploy fails with "Deployment Failed" message
+**Solution:**
+- Simplify your deployment configuration by removing complex files like `.deployment` and `web.config`
+- Use a minimal `startup.txt` file with just the essential commands
+- Ensure all files have proper line endings (LF instead of CRLF)
+- Check Azure App Service logs for specific error messages
+- Try deploying via Git instead of ZIP if problems persist
+- Verify your Azure App Service plan supports Python applications
+
 ## Windsurf and Cascade Issues
 
 ### Windsurf IDE Problems
