@@ -2,11 +2,33 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize the map
     const map = L.map('map').setView([-41.2865, 174.7762], 13); // Default to Wellington, NZ
     
-    // Add OpenStreetMap tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
+    // Define base map layers
+    // Add CartoDB Voyager (Google Maps-like style)
+    const cartoVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+    });
+    
+    // Add Esri Satellite (similar to Google Maps satellite)
+    const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+        maxZoom: 19
+    });
+    
+    // Add the default map layer (CartoDB Voyager - Google Maps-like)
+    cartoVoyager.addTo(map);
+    
+    // Create a layer control with just Map and Satellite options
+    const baseMaps = {
+        "Map": cartoVoyager,
+        "Satellite": esriSatellite
+    };
+    
+    L.control.layers(baseMaps).addTo(map);
+    
+    // Add scale control
+    L.control.scale({imperial: false}).addTo(map);
     
     // Initialize FeatureGroup to store editable layers
     const drawnItems = new L.FeatureGroup();
@@ -69,16 +91,17 @@ document.addEventListener('DOMContentLoaded', function() {
             name: name,
             description: description,
             geometry: geoJSON,
-            properties: {}
+            type: 'dog park'
         };
         
         // Determine if we're creating or updating
         const url = currentDrawingId 
-            ? `/api/drawings/${currentDrawingId}` 
-            : '/api/drawings';
+            ? `/api/locations/${currentDrawingId}` 
+            : '/api/locations';
         const method = currentDrawingId ? 'PUT' : 'POST';
         
         // Send to API
+        console.log('Sending data to API:', JSON.stringify(drawingData, null, 2));
         fetch(url, {
             method: method,
             headers: {
@@ -87,19 +110,33 @@ document.addEventListener('DOMContentLoaded', function() {
             body: JSON.stringify(drawingData)
         })
         .then(response => {
+            console.log('Response status:', response.status);
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                // Try to get the error message from the response
+                return response.text().then(text => {
+                    console.error('Error response:', text);
+                    try {
+                        // Try to parse as JSON
+                        const errorData = JSON.parse(text);
+                        throw new Error(`Server error (${response.status}): ${errorData.error || errorData.message || 'Unknown error'}`);
+                    } catch (parseError) {
+                        // If not JSON, use the raw text
+                        throw new Error(`Server error (${response.status}): ${text || 'Unknown error'}`);
+                    }
+                });
             }
             return response.json();
         })
         .then(data => {
+            console.log('Success response:', data);
             alert('Drawing saved successfully!');
             clearForm();
             loadDrawings();
         })
         .catch(error => {
             console.error('Error saving drawing:', error);
-            alert('Error saving drawing. Please try again.');
+            const errorDetails = error.message || 'Unknown error';
+            alert(`Error saving drawing. Details: ${errorDetails}`);
         });
     });
     
@@ -118,13 +155,43 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Function to load saved drawings
     function loadDrawings() {
-        fetch('/api/drawings')
+        fetch('/api/locations')
             .then(response => response.json())
-            .then(drawings => {
+            .then(data => {
+                if (!data.success) {
+                    console.error('Error loading locations:', data.error);
+                    return;
+                }
+                
+                const drawings = data.data;
                 const drawingsList = document.getElementById('drawings');
                 drawingsList.innerHTML = '';
                 
+                // Create a marker cluster group instead of a feature group
+                const markerCluster = L.markerClusterGroup({
+                    showCoverageOnHover: false,
+                    maxClusterRadius: 50,
+                    iconCreateFunction: function(cluster) {
+                        const count = cluster.getChildCount();
+                        let size = 'small';
+                        
+                        if (count > 10) {
+                            size = 'medium';
+                        }
+                        if (count > 20) {
+                            size = 'large';
+                        }
+                        
+                        return L.divIcon({
+                            html: `<div><span>${count}</span></div>`,
+                            className: `marker-cluster marker-cluster-${size}`,
+                            iconSize: L.point(40, 40)
+                        });
+                    }
+                });
+                
                 drawings.forEach(drawing => {
+                    // Add to the list
                     const listItem = document.createElement('li');
                     listItem.className = 'list-group-item';
                     
@@ -163,7 +230,76 @@ document.addEventListener('DOMContentLoaded', function() {
                     listItem.appendChild(actionsDiv);
                     
                     drawingsList.appendChild(listItem);
+                    
+                    // Add to the map with custom styling
+                    try {
+                        if (drawing.geometry) {
+                            const geoJSONLayer = L.geoJSON(drawing.geometry, {
+                                style: function(feature) {
+                                    return {
+                                        color: '#4285F4', // Google blue
+                                        weight: 3,
+                                        opacity: 0.9,
+                                        fillColor: '#4285F4',
+                                        fillOpacity: 0.2
+                                    };
+                                },
+                                pointToLayer: function(feature, latlng) {
+                                    // Create a marker for points
+                                    const marker = L.circleMarker(latlng, {
+                                        radius: 8,
+                                        fillColor: "#DB4437", // Google red
+                                        color: "#FFFFFF",
+                                        weight: 2,
+                                        opacity: 1,
+                                        fillOpacity: 1
+                                    });
+                                    
+                                    // Add a popup with the name and description
+                                    if (drawing.name) {
+                                        let popupContent = `<strong>${drawing.name}</strong>`;
+                                        if (drawing.description) {
+                                            popupContent += `<br>${drawing.description}`;
+                                        }
+                                        marker.bindPopup(popupContent);
+                                    }
+                                    
+                                    return marker;
+                                }
+                            });
+                            
+                            // Add markers to the cluster group and other geometries directly to the map
+                            geoJSONLayer.eachLayer(layer => {
+                                if (layer instanceof L.CircleMarker) {
+                                    // Points go to the cluster
+                                    markerCluster.addLayer(layer);
+                                } else {
+                                    // Other geometries (polygons, lines) go directly to the map
+                                    layer.addTo(map);
+                                    
+                                    // Add a popup with the name and description for non-point features
+                                    if (drawing.name) {
+                                        let popupContent = `<strong>${drawing.name}</strong>`;
+                                        if (drawing.description) {
+                                            popupContent += `<br>${drawing.description}`;
+                                        }
+                                        layer.bindPopup(popupContent);
+                                    }
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.error('Error adding drawing to map:', e);
+                    }
                 });
+                
+                // Add the cluster group to the map
+                map.addLayer(markerCluster);
+                
+                // If there are parks, zoom to fit them all
+                if (markerCluster.getLayers().length > 0) {
+                    map.fitBounds(markerCluster.getBounds());
+                }
             })
             .catch(error => {
                 console.error('Error loading drawings:', error);
@@ -175,14 +311,54 @@ document.addEventListener('DOMContentLoaded', function() {
         // Clear existing layers
         drawnItems.clearLayers();
         
-        // Add the GeoJSON to the map
-        const geoJSONLayer = L.geoJSON(drawing.geometry);
+        // Add the GeoJSON to the map with custom styling
+        const geoJSONLayer = L.geoJSON(drawing.geometry, {
+            style: function(feature) {
+                return {
+                    color: '#4285F4', // Google blue
+                    weight: 3,
+                    opacity: 0.9,
+                    fillColor: '#4285F4',
+                    fillOpacity: 0.2
+                };
+            },
+            pointToLayer: function(feature, latlng) {
+                return L.circleMarker(latlng, {
+                    radius: 8,
+                    fillColor: "#DB4437", // Google red
+                    color: "#FFFFFF",
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 1
+                });
+            }
+        });
+        
         geoJSONLayer.eachLayer(layer => {
+            // Add a popup with the name and description
+            if (drawing.name) {
+                let popupContent = `<strong>${drawing.name}</strong>`;
+                if (drawing.description) {
+                    popupContent += `<br>${drawing.description}`;
+                }
+                layer.bindPopup(popupContent);
+            }
+            
             drawnItems.addLayer(layer);
         });
         
         // Zoom to the drawing
-        map.fitBounds(drawnItems.getBounds());
+        map.fitBounds(drawnItems.getBounds(), {
+            padding: [50, 50] // Add some padding around the bounds
+        });
+        
+        // Open the popup if it's a point feature
+        if (drawing.geometry.type === 'Point') {
+            const layers = drawnItems.getLayers();
+            if (layers.length > 0) {
+                layers[0].openPopup();
+            }
+        }
     }
     
     // Function to edit a drawing
@@ -210,12 +386,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to delete a drawing
     function deleteDrawing(id) {
         if (confirm('Are you sure you want to delete this drawing?')) {
-            fetch(`/api/drawings/${id}`, {
+            fetch(`/api/locations/${id}`, {
                 method: 'DELETE'
             })
             .then(response => {
                 if (!response.ok) {
-                    throw new Error('Network response was not ok');
+                    // Try to get the error message from the response
+                    return response.text().then(text => {
+                        console.error('Error response:', text);
+                        try {
+                            // Try to parse as JSON
+                            const errorData = JSON.parse(text);
+                            throw new Error(`Server error (${response.status}): ${errorData.error || errorData.message || 'Unknown error'}`);
+                        } catch (parseError) {
+                            // If not JSON, use the raw text
+                            throw new Error(`Server error (${response.status}): ${text || 'Unknown error'}`);
+                        }
+                    });
                 }
                 alert('Drawing deleted successfully!');
                 loadDrawings();
@@ -227,7 +414,8 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => {
                 console.error('Error deleting drawing:', error);
-                alert('Error deleting drawing. Please try again.');
+                const errorDetails = error.message || 'Unknown error';
+                alert(`Error deleting drawing. Details: ${errorDetails}`);
             });
         }
     }

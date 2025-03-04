@@ -9,9 +9,16 @@ load_dotenv()
 app = Flask(__name__)
 
 # Configure database
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///mapdrawings.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+print("Database URL:", os.getenv('DATABASE_URL'))
+
+from flask_migrate import Migrate
+
+# Initialize the database and migration
+migrate = Migrate(app, db)
 
 # Import routes after app initialization to avoid circular imports
 from routes import *
