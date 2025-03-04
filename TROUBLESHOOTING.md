@@ -71,9 +71,23 @@ This troubleshooting guide helps users and developers quickly resolve common pro
 #### Issue: ModuleNotFoundError: No module named 'flask_sqlalchemy'
 **Solution:**
 - Update your startup.txt file to include `pip install -r requirements.txt` before the gunicorn command
+- Add a proper deployment script with the following files:
+  - `.deployment` file to specify the deployment command
+  - `deploy.sh` script to handle dependency installation
+  - `web.config` file for IIS configuration
+  - `runserver.py` for Azure to execute the application
 - Verify that Flask-SQLAlchemy is listed in your requirements.txt file
 - Check Azure logs to ensure dependencies are being installed correctly
 - If the issue persists, try manually installing the package via Azure's Kudu console
+
+#### Issue: Azure deployment fails with dependency errors
+**Solution:**
+- SSH into your Azure Web App using the Kudu console
+- Navigate to the site/wwwroot directory
+- Manually run `pip install -r requirements.txt` to see specific errors
+- Check if your Python version on Azure matches your local development environment
+- Ensure all dependencies in requirements.txt have compatible versions
+- Try adding `--no-cache-dir` to pip install commands if space is an issue
 
 #### Issue: GitHub Actions deployment fails
 **Solution:**
