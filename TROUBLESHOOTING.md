@@ -68,6 +68,13 @@ This troubleshooting guide helps users and developers quickly resolve common pro
 
 ### Azure Deployment Problems
 
+#### Issue: ModuleNotFoundError: No module named 'flask_sqlalchemy'
+**Solution:**
+- Update your startup.txt file to include `pip install -r requirements.txt` before the gunicorn command
+- Verify that Flask-SQLAlchemy is listed in your requirements.txt file
+- Check Azure logs to ensure dependencies are being installed correctly
+- If the issue persists, try manually installing the package via Azure's Kudu console
+
 #### Issue: GitHub Actions deployment fails
 **Solution:**
 - Check the GitHub Actions logs for specific errors
