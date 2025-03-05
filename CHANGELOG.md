@@ -11,6 +11,15 @@ This changelog tracks the history of changes to the project, helping users and d
 
 ## [Unreleased]
 
+### Added
+- Center coordinates (lat/lng) for all geometry types
+- Automatic calculation of center points for different geometry types:
+  - Points: Uses the exact coordinates
+  - Polylines: Uses the midpoint along the line
+  - Polygons: Uses the centroid of the shape
+- Center coordinates are stored in the database and included in API responses
+- Future features will be listed here before they are released
+
 ### Planned
 - Search functionality for finding parks by name or features
 - User accounts with favorites and reviews
@@ -18,9 +27,6 @@ This changelog tracks the history of changes to the project, helping users and d
 - Advanced filtering options for park amenities
 - Dark mode for improved night viewing
 - Performance optimizations for large datasets
-
-### Added
-- Future features will be listed here before they are released
 
 ## [0.2.0] - 2025-03-05
 

@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', function() {
             name: name,
             description: description,
             geometry: geoJSON,
-            type: 'dog park'
+            type: 'dog_park'
         };
         
         // Determine if we're creating or updating
@@ -244,6 +244,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Add to the map with custom styling
                     try {
                         if (drawing.geometry) {
+                            // Create a GeoJSON layer for the actual geometry
                             const geoJSONLayer = L.geoJSON(drawing.geometry, {
                                 style: function(feature) {
                                     return {
@@ -255,73 +256,64 @@ document.addEventListener('DOMContentLoaded', function() {
                                     };
                                 },
                                 pointToLayer: function(feature, latlng) {
-                                    // Create a marker for points
-                                    const marker = L.circleMarker(latlng, {
-                                        radius: 8,
-                                        fillColor: "#DB4437", // Google red
-                                        color: "#FFFFFF",
-                                        weight: 2,
-                                        opacity: 1,
-                                        fillOpacity: 1
-                                    });
-                                    
-                                    // Add a popup with the name and description
-                                    if (drawing.name) {
-                                        let popupContent = `<strong>${drawing.name}</strong>`;
-                                        if (drawing.description) {
-                                            popupContent += `<br>${drawing.description}`;
-                                        }
-                                        marker.bindPopup(popupContent);
-                                    }
-                                    
-                                    return marker;
+                                    // For point geometries, we'll handle them separately
+                                    return null;
                                 }
                             });
                             
-                            // Add markers to the cluster group and other geometries directly to the map
+                            // Add all geometries to the non-point layers group
                             geoJSONLayer.eachLayer(layer => {
-                                if (layer instanceof L.CircleMarker) {
-                                    // Points go to the cluster
-                                    markerCluster.addLayer(layer);
-                                } else {
-                                    // For polygons and polylines, add them directly to the map
-                                    nonPointLayers.addLayer(layer);
-                                    
-                                    // Add a popup with the name and description for non-point features
-                                    if (drawing.name) {
-                                        let popupContent = `<strong>${drawing.name}</strong>`;
-                                        if (drawing.description) {
-                                            popupContent += `<br>${drawing.description}`;
-                                        }
-                                        layer.bindPopup(popupContent);
+                                nonPointLayers.addLayer(layer);
+                                
+                                // Add a popup with the name and description
+                                if (drawing.name) {
+                                    let popupContent = `<strong>${drawing.name}</strong>`;
+                                    if (drawing.description) {
+                                        popupContent += `<br>${drawing.description}`;
                                     }
-                                    
-                                    // Also create a center point marker for the polygon/polyline to include in clustering
-                                    try {
-                                        // Get the center of the bounds
-                                        const bounds = layer.getBounds();
-                                        const center = bounds.getCenter();
-                                        
-                                        // Create an invisible marker at the center
-                                        const centerMarker = L.marker(center, {
-                                            opacity: 0,  // Make it invisible
-                                            interactive: false  // Not interactive
-                                        });
-                                        
-                                        // Add data to the marker for reference
-                                        centerMarker.drawingId = drawing.id;
-                                        centerMarker.drawingType = drawing.geometry.type;
-                                        
-                                        // Add to cluster
-                                        markerCluster.addLayer(centerMarker);
-                                        
-                                        // Store reference between center marker and actual geometry
-                                        markerToGeometryMap.set(centerMarker, layer);
-                                    } catch (e) {
-                                        console.error('Error creating center marker for non-point geometry:', e);
-                                    }
+                                    layer.bindPopup(popupContent);
                                 }
                             });
+                            
+                            // Create a marker at the center coordinates
+                            if (drawing.lat !== null && drawing.lng !== null) {
+                                const centerLatLng = L.latLng(drawing.lat, drawing.lng);
+                                
+                                // Create a visible marker for the center point
+                                const centerMarker = L.marker(centerLatLng, {
+                                    icon: L.divIcon({
+                                        className: 'paw-marker',
+                                        html: '<i class="material-icons">pets</i>',
+                                        iconSize: [30, 30],
+                                        iconAnchor: [15, 15]
+                                    })
+                                });
+                                
+                                // Add data to the marker for reference
+                                centerMarker.drawingId = drawing.id;
+                                centerMarker.drawingType = drawing.geometry.type;
+                                
+                                // Add popup to the center marker
+                                if (drawing.name) {
+                                    let popupContent = `<strong>${drawing.name}</strong>`;
+                                    if (drawing.description) {
+                                        popupContent += `<br>${drawing.description}`;
+                                    }
+                                    // Add coordinates to the popup
+                                    popupContent += `<br>Lat: ${drawing.lat.toFixed(6)}, Lng: ${drawing.lng.toFixed(6)}`;
+                                    centerMarker.bindPopup(popupContent);
+                                }
+                                
+                                // Add to cluster
+                                markerCluster.addLayer(centerMarker);
+                                
+                                // Store reference between center marker and actual geometry
+                                geoJSONLayer.eachLayer(layer => {
+                                    markerToGeometryMap.set(centerMarker, layer);
+                                });
+                            } else {
+                                console.warn(`Location ${drawing.id} (${drawing.name}) has no center coordinates.`);
+                            }
                         }
                     } catch (e) {
                         console.error('Error adding drawing to map:', e);

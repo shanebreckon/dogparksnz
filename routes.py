@@ -1,7 +1,7 @@
 from flask import render_template, request, jsonify
 from app import app, db
 import json
-from models import MapLocation
+from models import MapLocation, calculate_center_coordinates
 from geoalchemy2.functions import ST_GeomFromGeoJSON
 from geoalchemy2.shape import from_shape
 from shapely.geometry import shape
@@ -25,6 +25,7 @@ def get_all_locations():
             SELECT 
                 id, name, description, type, 
                 geometry.STAsText() as wkt,
+                lat, lng,
                 created_at, updated_at
             FROM map_location
         """)
@@ -43,6 +44,8 @@ def get_all_locations():
                     'description': row.description,
                     'geometry': geojson,
                     'type': row.type,
+                    'lat': row.lat,
+                    'lng': row.lng,
                     'created_at': row.created_at.isoformat(),
                     'updated_at': row.updated_at.isoformat()
                 }
@@ -53,6 +56,8 @@ def get_all_locations():
                     'name': row.name,
                     'description': row.description,
                     'type': row.type,
+                    'lat': row.lat,
+                    'lng': row.lng,
                     'error': f"Error processing geometry: {str(e)}",
                     'created_at': row.created_at.isoformat(),
                     'updated_at': row.updated_at.isoformat()
@@ -92,10 +97,13 @@ def create_location():
             shapely_geom = shape(geometry_data)
             wkt = shapely_geom.wkt
             
+            # Calculate center coordinates
+            lat, lng = calculate_center_coordinates(wkt)
+            
             sql = text("""
-                INSERT INTO map_location (name, description, geometry, type, created_at, updated_at)
+                INSERT INTO map_location (name, description, geometry, type, lat, lng, created_at, updated_at)
                 OUTPUT inserted.id
-                VALUES (:name, :description, geography::STGeomFromText(:wkt, 4326), :type, GETDATE(), GETDATE())
+                VALUES (:name, :description, geography::STGeomFromText(:wkt, 4326), :type, :lat, :lng, GETDATE(), GETDATE())
             """)
             
             try:
@@ -105,7 +113,9 @@ def create_location():
                         'name': name, 
                         'description': description, 
                         'wkt': wkt,
-                        'type': type
+                        'type': type,
+                        'lat': lat,
+                        'lng': lng
                     }
                 )
                 
@@ -115,6 +125,7 @@ def create_location():
                     SELECT 
                         id, name, description, type, 
                         geometry.STAsText() as wkt,
+                        lat, lng,
                         created_at, updated_at
                     FROM map_location
                     WHERE id = :id
@@ -132,6 +143,8 @@ def create_location():
                         'description': result.description,
                         'geometry': geojson,
                         'type': result.type,
+                        'lat': result.lat,
+                        'lng': result.lng,
                         'created_at': result.created_at.isoformat(),
                         'updated_at': result.updated_at.isoformat()
                     }
@@ -164,6 +177,7 @@ def get_location(location_id):
             SELECT 
                 id, name, description, type, 
                 geometry.STAsText() as wkt,
+                lat, lng,
                 created_at, updated_at
             FROM map_location
             WHERE id = :id
@@ -185,6 +199,8 @@ def get_location(location_id):
                 'description': result.description,
                 'geometry': geojson,
                 'type': result.type,
+                'lat': result.lat,
+                'lng': result.lng,
                 'created_at': result.created_at.isoformat(),
                 'updated_at': result.updated_at.isoformat()
             }
@@ -197,13 +213,15 @@ def get_location(location_id):
                 'name': result.name,
                 'description': result.description,
                 'type': result.type,
+                'lat': result.lat,
+                'lng': result.lng,
                 'error': error_msg,
                 'created_at': result.created_at.isoformat(),
                 'updated_at': result.updated_at.isoformat()
             }
-            return jsonify({"success": True, "data": location_dict, "warning": error_msg}), 200
+            return jsonify({"success": True, "data": location_dict}), 200
     except Exception as e:
-        error_msg = f"Error fetching location: {str(e)}"
+        error_msg = f"Error fetching location {location_id}: {str(e)}"
         return jsonify({"success": False, "error": error_msg}), 500
 
 @app.route('/api/locations/<int:location_id>', methods=['PUT'])
@@ -212,25 +230,24 @@ def update_location(location_id):
     try:
         data = request.json
         
+        name = data.get('name')
+        description = data.get('description', '')
+        type = data.get('type')
+        
+        if not name or not type:
+            return jsonify({"success": False, "error": "Name and type are required"}), 400
+        
+        # Check if the location exists
         check_sql = text("SELECT id FROM map_location WHERE id = :id")
         result = db.session.execute(check_sql, {"id": location_id}).fetchone()
         
         if not result:
-            error_msg = f"Location with ID {location_id} not found"
-            return jsonify({"success": False, "error": error_msg}), 404
+            return jsonify({"success": False, "error": f"Location with ID {location_id} not found"}), 404
         
-        updates = {}
-        if 'name' in data:
-            updates['name'] = data['name']
-        if 'description' in data:
-            updates['description'] = data['description']
-        if 'type' in data:
-            updates['type'] = data['type']
-        
-        if 'geometry' in data:
+        # Handle geometry update if provided
+        geometry_data = data.get('geometry')
+        if geometry_data:
             try:
-                geometry_data = data['geometry']
-                
                 if 'type' in geometry_data:
                     if geometry_data['type'] == 'FeatureCollection' and 'features' in geometry_data:
                         if not geometry_data['features']:
@@ -242,71 +259,146 @@ def update_location(location_id):
                 shapely_geom = shape(geometry_data)
                 wkt = shapely_geom.wkt
                 
-                updates['geometry_wkt'] = wkt
+                # Calculate center coordinates
+                lat, lng = calculate_center_coordinates(wkt)
+                print(f"DEBUG: Calculated coordinates for location {location_id}: lat={lat}, lng={lng}")
+                
+                # First update just the geometry
+                geo_sql = text("""
+                    UPDATE map_location
+                    SET geometry = geography::STGeomFromText(:wkt, 4326),
+                        updated_at = GETDATE()
+                    WHERE id = :id
+                """)
+                
+                db.session.execute(geo_sql, {'id': location_id, 'wkt': wkt})
+                db.session.flush()
+                
+                # Then update the other fields including coordinates in a separate statement
+                update_sql = text("""
+                    UPDATE map_location
+                    SET name = :name, 
+                        description = :description, 
+                        type = :type,
+                        lat = :lat,
+                        lng = :lng
+                    WHERE id = :id
+                """)
+                
+                db.session.execute(
+                    update_sql, 
+                    {
+                        'id': location_id,
+                        'name': name, 
+                        'description': description, 
+                        'type': type,
+                        'lat': lat,
+                        'lng': lng
+                    }
+                )
+                db.session.flush()
+                print(f"DEBUG: Updated location {location_id} with new coordinates: lat={lat}, lng={lng}")
+                
+                # Verify the update immediately
+                verify_sql = text("SELECT lat, lng FROM map_location WHERE id = :id")
+                verify_result = db.session.execute(verify_sql, {"id": location_id}).fetchone()
+                print(f"DEBUG: Verified coordinates after update: lat={verify_result.lat}, lng={verify_result.lng}")
+                
             except Exception as e:
+                db.session.rollback()
                 error_msg = f"Invalid geometry format: {str(e)}"
+                print(f"DEBUG ERROR: {error_msg}")
                 return jsonify({"success": False, "error": error_msg}), 400
+        else:
+            # Update without changing geometry
+            sql = text("""
+                UPDATE map_location
+                SET name = :name, 
+                    description = :description, 
+                    type = :type,
+                    updated_at = GETDATE()
+                WHERE id = :id
+            """)
+            
+            db.session.execute(
+                sql, 
+                {
+                    'id': location_id,
+                    'name': name, 
+                    'description': description, 
+                    'type': type
+                }
+            )
         
-        if not updates:
-            return jsonify({"success": False, "error": "No updates provided"}), 400
-        
-        update_parts = []
-        params = {"id": location_id}
-        
-        for key, value in updates.items():
-            if key == 'geometry_wkt':
-                update_parts.append("geometry = geography::STGeomFromText(:geometry_wkt, 4326)")
-                params['geometry_wkt'] = value
-            else:
-                update_parts.append(f"{key} = :{key}")
-                params[key] = value
-        
-        update_parts.append("updated_at = GETDATE()")
-        
-        update_sql = text(f"""
-            UPDATE map_location
-            SET {', '.join(update_parts)}
-            WHERE id = :id
-        """)
-        
-        db.session.execute(update_sql, params)
-        
-        fetch_sql = text("""
+        # Fetch the updated record
+        sql = text("""
             SELECT 
                 id, name, description, type, 
                 geometry.STAsText() as wkt,
+                lat, lng,
                 created_at, updated_at
             FROM map_location
             WHERE id = :id
         """)
         
-        result = db.session.execute(fetch_sql, {"id": location_id}).fetchone()
+        result = db.session.execute(sql, {"id": location_id}).fetchone()
         
         if result:
-            geom = shapely.wkt.loads(result.wkt)
-            geojson = mapping(geom)
-            
-            location_dict = {
-                'id': result.id,
-                'name': result.name,
-                'description': result.description,
-                'geometry': geojson,
-                'type': result.type,
-                'created_at': result.created_at.isoformat(),
-                'updated_at': result.updated_at.isoformat()
-            }
-            
-            db.session.commit()
-            return jsonify({"success": True, "data": location_dict}), 200
+            try:
+                geom = shapely.wkt.loads(result.wkt)
+                geojson = mapping(geom)
+                
+                # Double-check that lat/lng are updated correctly
+                if geometry_data and (result.lat is None or result.lng is None or 
+                                     (lat is not None and lng is not None and 
+                                      (abs(result.lat - lat) > 0.0000001 or abs(result.lng - lng) > 0.0000001))):
+                    print(f"DEBUG WARNING: Coordinates not properly updated for location {location_id}")
+                    print(f"Expected: lat={lat}, lng={lng}, Got: lat={result.lat}, lng={result.lng}")
+                    
+                    # Force update with a separate statement
+                    force_update_sql = text("""
+                        UPDATE map_location
+                        SET lat = :lat, lng = :lng
+                        WHERE id = :id
+                    """)
+                    db.session.execute(force_update_sql, {"id": location_id, "lat": lat, "lng": lng})
+                    db.session.flush()
+                    print(f"DEBUG: Forced coordinate update to lat={lat}, lng={lng}")
+                    
+                    # Re-fetch to verify
+                    verify_result = db.session.execute(verify_sql, {"id": location_id}).fetchone()
+                    print(f"DEBUG: Re-verified coordinates: lat={verify_result.lat}, lng={verify_result.lng}")
+                
+                result_dict = {
+                    'id': result.id,
+                    'name': result.name,
+                    'description': result.description,
+                    'geometry': geojson,
+                    'type': result.type,
+                    'lat': result.lat,
+                    'lng': result.lng,
+                    'created_at': result.created_at.isoformat(),
+                    'updated_at': result.updated_at.isoformat()
+                }
+                
+                # Make sure to commit all changes
+                db.session.commit()
+                print(f"DEBUG: Successfully committed all changes for location {location_id}")
+                return jsonify({"success": True, "data": result_dict}), 200
+            except Exception as e:
+                db.session.rollback()
+                error_msg = f"Error processing updated geometry: {str(e)}"
+                print(f"DEBUG ERROR: {error_msg}")
+                return jsonify({"success": False, "error": error_msg}), 500
         else:
             db.session.rollback()
-            error_msg = "Failed to retrieve the updated record"
-            return jsonify({"success": False, "error": error_msg}), 500
+            return jsonify({"success": False, "error": "Failed to retrieve the updated record"}), 500
             
     except Exception as e:
         if 'db' in locals() and db.session:
             db.session.rollback()
-        error_msg = f"Error updating location: {str(e)}"
+        error_msg = f"Error updating location {location_id}: {str(e)}"
+        print(f"DEBUG ERROR: {error_msg}")
         return jsonify({"success": False, "error": error_msg}), 500
 
 @app.route('/api/locations/<int:location_id>', methods=['DELETE'])
