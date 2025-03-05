@@ -11,7 +11,7 @@ class MapLocation(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     geometry = db.Column(Geography(geometry_type='GEOMETRY', srid=4326), nullable=False)  # Using Geography type
-    type = db.Column(db.String(50), nullable=False)  # Type of location (e.g., dog park)
+    type = db.Column(db.String(50), nullable=False)  # Type of location (e.g., dog_park)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

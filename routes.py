@@ -7,7 +7,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import shape
 from geoalchemy2 import WKTElement
 from sqlalchemy.exc import SQLAlchemyError
-import traceback  # Add traceback for detailed error logging
+import traceback  
 from sqlalchemy import text
 import shapely.wkt
 from shapely.geometry import mapping
@@ -60,7 +60,8 @@ def get_all_locations():
         
         return jsonify({"success": True, "data": locations}), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        error_msg = f"Error fetching locations: {str(e)}"
+        return jsonify({"success": False, "error": error_msg}), 500
 
 @app.route('/api/locations', methods=['POST'])
 def create_location():
@@ -70,9 +71,9 @@ def create_location():
         
         name = data.get('name')
         description = data.get('description', '')
-        location_type = data.get('type')
+        type = data.get('type')
         
-        if not name or not location_type:
+        if not name or not type:
             return jsonify({"success": False, "error": "Name and type are required"}), 400
         
         geometry_data = data.get('geometry')
@@ -97,56 +98,63 @@ def create_location():
                 VALUES (:name, :description, geography::STGeomFromText(:wkt, 4326), :type, GETDATE(), GETDATE())
             """)
             
-            result = db.session.execute(
-                sql, 
-                {
-                    'name': name, 
-                    'description': description, 
-                    'wkt': wkt,
-                    'type': location_type
-                }
-            )
-            
-            inserted_id = result.scalar()
-            
-            sql = text("""
-                SELECT 
-                    id, name, description, type, 
-                    geometry.STAsText() as wkt,
-                    created_at, updated_at
-                FROM map_location
-                WHERE id = :id
-            """)
-            
-            result = db.session.execute(sql, {"id": inserted_id}).fetchone()
-            
-            if result:
-                geom = shapely.wkt.loads(result.wkt)
-                geojson = mapping(geom)
+            try:
+                result = db.session.execute(
+                    sql, 
+                    {
+                        'name': name, 
+                        'description': description, 
+                        'wkt': wkt,
+                        'type': type
+                    }
+                )
                 
-                result_dict = {
-                    'id': result.id,
-                    'name': result.name,
-                    'description': result.description,
-                    'geometry': geojson,
-                    'type': result.type,
-                    'created_at': result.created_at.isoformat(),
-                    'updated_at': result.updated_at.isoformat()
-                }
+                inserted_id = result.scalar()
                 
-                db.session.commit()
-                return jsonify({"success": True, "data": result_dict}), 201
-            else:
+                sql = text("""
+                    SELECT 
+                        id, name, description, type, 
+                        geometry.STAsText() as wkt,
+                        created_at, updated_at
+                    FROM map_location
+                    WHERE id = :id
+                """)
+                
+                result = db.session.execute(sql, {"id": inserted_id}).fetchone()
+                
+                if result:
+                    geom = shapely.wkt.loads(result.wkt)
+                    geojson = mapping(geom)
+                    
+                    result_dict = {
+                        'id': result.id,
+                        'name': result.name,
+                        'description': result.description,
+                        'geometry': geojson,
+                        'type': result.type,
+                        'created_at': result.created_at.isoformat(),
+                        'updated_at': result.updated_at.isoformat()
+                    }
+                    
+                    db.session.commit()
+                    return jsonify({"success": True, "data": result_dict}), 201
+                else:
+                    db.session.rollback()
+                    return jsonify({"success": False, "error": "Failed to retrieve the inserted record"}), 500
+            except SQLAlchemyError as sql_error:
                 db.session.rollback()
-                return jsonify({"success": False, "error": "Failed to retrieve the inserted record"}), 500
+                error_msg = f"Database error: {str(sql_error)}"
+                return jsonify({"success": False, "error": error_msg}), 500
                 
         except Exception as e:
-            return jsonify({"success": False, "error": f"Invalid geometry format: {str(e)}"}), 400
+            error_msg = f"Invalid geometry format: {str(e)}"
+            return jsonify({"success": False, "error": error_msg}), 400
             
     except Exception as e:
         if 'db' in locals() and db.session:
             db.session.rollback()
-        return jsonify({"success": False, "error": str(e)}), 500
+        error_msg = f"Error creating location: {str(e)}"
+        return jsonify({"success": False, "error": error_msg}), 500
 
 @app.route('/api/locations/<int:location_id>', methods=['GET'])
 def get_location(location_id):
@@ -164,7 +172,8 @@ def get_location(location_id):
         result = db.session.execute(sql, {"id": location_id}).fetchone()
         
         if not result:
-            return jsonify({"success": False, "error": f"Location with ID {location_id} not found"}), 404
+            error_msg = f"Location with ID {location_id} not found"
+            return jsonify({"success": False, "error": error_msg}), 404
         
         try:
             geom = shapely.wkt.loads(result.wkt)
@@ -182,18 +191,20 @@ def get_location(location_id):
             
             return jsonify({"success": True, "data": location_dict}), 200
         except Exception as e:
+            error_msg = f"Error processing geometry for location {location_id}: {str(e)}"
             location_dict = {
                 'id': result.id,
                 'name': result.name,
                 'description': result.description,
                 'type': result.type,
-                'error': f"Error processing geometry: {str(e)}",
+                'error': error_msg,
                 'created_at': result.created_at.isoformat(),
                 'updated_at': result.updated_at.isoformat()
             }
-            return jsonify({"success": True, "data": location_dict, "warning": str(e)}), 200
+            return jsonify({"success": True, "data": location_dict, "warning": error_msg}), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        error_msg = f"Error fetching location: {str(e)}"
+        return jsonify({"success": False, "error": error_msg}), 500
 
 @app.route('/api/locations/<int:location_id>', methods=['PUT'])
 def update_location(location_id):
@@ -205,7 +216,8 @@ def update_location(location_id):
         result = db.session.execute(check_sql, {"id": location_id}).fetchone()
         
         if not result:
-            return jsonify({"success": False, "error": f"Location with ID {location_id} not found"}), 404
+            error_msg = f"Location with ID {location_id} not found"
+            return jsonify({"success": False, "error": error_msg}), 404
         
         updates = {}
         if 'name' in data:
@@ -232,7 +244,8 @@ def update_location(location_id):
                 
                 updates['geometry_wkt'] = wkt
             except Exception as e:
-                return jsonify({"success": False, "error": f"Invalid geometry format: {str(e)}"}), 400
+                error_msg = f"Invalid geometry format: {str(e)}"
+                return jsonify({"success": False, "error": error_msg}), 400
         
         if not updates:
             return jsonify({"success": False, "error": "No updates provided"}), 400
@@ -287,12 +300,14 @@ def update_location(location_id):
             return jsonify({"success": True, "data": location_dict}), 200
         else:
             db.session.rollback()
-            return jsonify({"success": False, "error": "Failed to retrieve the updated record"}), 500
+            error_msg = "Failed to retrieve the updated record"
+            return jsonify({"success": False, "error": error_msg}), 500
             
     except Exception as e:
         if 'db' in locals() and db.session:
             db.session.rollback()
-        return jsonify({"success": False, "error": str(e)}), 500
+        error_msg = f"Error updating location: {str(e)}"
+        return jsonify({"success": False, "error": error_msg}), 500
 
 @app.route('/api/locations/<int:location_id>', methods=['DELETE'])
 def delete_location(location_id):
@@ -302,7 +317,8 @@ def delete_location(location_id):
         result = db.session.execute(check_sql, {"id": location_id}).fetchone()
         
         if not result:
-            return jsonify({"success": False, "error": f"Location with ID {location_id} not found"}), 404
+            error_msg = f"Location with ID {location_id} not found"
+            return jsonify({"success": False, "error": error_msg}), 404
         
         delete_sql = text("DELETE FROM map_location WHERE id = :id")
         db.session.execute(delete_sql, {"id": location_id})
@@ -312,7 +328,8 @@ def delete_location(location_id):
     except Exception as e:
         if 'db' in locals() and db.session:
             db.session.rollback()
-        return jsonify({"success": False, "error": str(e)}), 500
+        error_msg = f"Error deleting location: {str(e)}"
+        return jsonify({"success": False, "error": error_msg}), 500
 
 @app.route('/api/test-geography', methods=['POST'])
 def test_geography():
@@ -328,7 +345,7 @@ def test_geography():
         
         name = "Test Point"
         description = "A test point for debugging"
-        location_type = "test"
+        type = "test"
         
         sql = text("""
             INSERT INTO map_location (name, description, geometry, type, created_at, updated_at)
@@ -342,7 +359,7 @@ def test_geography():
                 'name': name, 
                 'description': description, 
                 'wkt': wkt,
-                'type': location_type
+                'type': type
             }
         )
         
@@ -383,4 +400,5 @@ def test_geography():
     except Exception as e:
         if 'db' in locals() and db.session:
             db.session.rollback()
-        return jsonify({"success": False, "error": str(e)}), 500
+        error_msg = f"Error testing geography: {str(e)}"
+        return jsonify({"success": False, "error": error_msg}), 500
