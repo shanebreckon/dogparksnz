@@ -1,4 +1,11 @@
 #!/bin/bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+
+# Initialize the database
+echo "Initializing database..."
+python -c "from app import app, db; app.app_context().push(); db.create_all()"
+python -m flask db upgrade
+
+# Start the application
 gunicorn --bind=0.0.0.0 --timeout 600 app:app

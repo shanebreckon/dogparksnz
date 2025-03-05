@@ -38,6 +38,18 @@ This troubleshooting guide helps users and developers quickly resolve common pro
 - Ensure PostGIS extension is installed for spatial features
 - Check network connectivity and firewall settings
 
+#### Issue: Database initialization issues
+**Solution:**
+- Check if the database is properly initialized
+- Ensure the startup.txt file includes database initialization commands:
+  ```
+  python -c "from app import app, db; app.app_context().push(); db.create_all()"
+  python -m flask db upgrade
+  ```
+- Verify that the DATABASE_URL environment variable is correctly set
+- For persistent storage, consider using Azure SQL Database instead of SQLite
+- Check application logs for database connection errors
+
 ## Frontend Issues
 
 ### Map Display Problems
@@ -111,6 +123,18 @@ This troubleshooting guide helps users and developers quickly resolve common pro
 - Check Azure App Service logs for specific error messages
 - Try deploying via Git instead of ZIP if problems persist
 - Verify your Azure App Service plan supports Python applications
+
+#### Issue: Application deploys but shows no data or locations
+**Solution:**
+- Check if the database is properly initialized
+- Ensure the startup.txt file includes database initialization commands:
+  ```
+  python -c "from app import app, db; app.app_context().push(); db.create_all()"
+  python -m flask db upgrade
+  ```
+- Verify that the DATABASE_URL environment variable is correctly set
+- For persistent storage, consider using Azure SQL Database instead of SQLite
+- Check application logs for database connection errors
 
 ## Windsurf and Cascade Issues
 
