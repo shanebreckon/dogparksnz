@@ -125,42 +125,52 @@ body {
     text-align: center;
     font-family: 'Arial', sans-serif;
     font-weight: bold;
+    background-color: white;
+    border: 2px solid #2E7D32;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.2);
 }
 
 .marker-cluster div {
     width: 36px;
     height: 36px;
-    margin-left: 2px;
-    margin-top: 2px;
+    margin-left: 0px;
+    margin-top: 0px;
     border-radius: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
+    background-color: white;
 }
 
 .marker-cluster span {
-    color: white;
+    color: #2E7D32; /* Green text to match dog_park theme */
+    font-weight: bold;
+    font-size: 14px;
 }
 
+/* White background with green outline for clusters - matching dog_park markers */
 .marker-cluster-small {
-    background-color: rgba(181, 226, 140, 0.6);
+    background-color: white;
+    border: 2px solid #2E7D32;
 }
 .marker-cluster-small div {
-    background-color: rgba(110, 204, 57, 0.6);
+    background-color: white;
 }
 
 .marker-cluster-medium {
-    background-color: rgba(241, 211, 87, 0.6);
+    background-color: white;
+    border: 2px solid #2E7D32;
 }
 .marker-cluster-medium div {
-    background-color: rgba(240, 194, 12, 0.6);
+    background-color: white;
 }
 
 .marker-cluster-large {
-    background-color: rgba(253, 156, 115, 0.6);
+    background-color: white;
+    border: 2px solid #2E7D32;
 }
 .marker-cluster-large div {
-    background-color: rgba(241, 128, 23, 0.6);
+    background-color: white;
 }
 
 /* Custom paw marker styles */
@@ -170,16 +180,26 @@ body {
     justify-content: center;
     background-color: white;
     border-radius: 50%;
-    border: 2px solid #4CAF50;
+    border: 2px solid #2E7D32; /* Dark green border */
     width: 30px !important;
     height: 30px !important;
     margin-top: -15px !important;
     margin-left: -15px !important;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
 }
 
 .paw-marker .material-icons {
     color: #2E7D32; /* Dark green */
     font-size: 16px;
+}
+
+/* Dog park geometry styles - for reference in CSS */
+.dog-park-geometry {
+    stroke: #2E7D32;
+    stroke-width: 3;
+    stroke-opacity: 0.9;
+    fill: #2E7D32;
+    fill-opacity: 0.2;
 }
 
 /* Back to Map Button */

@@ -41,6 +41,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Map to store references between center markers and actual geometries
     const markerToGeometryMap = new Map();
     
+    // Function to apply dog_park styling to a layer
+    function applyDogParkStyling(layer) {
+        if (layer.setStyle) {
+            layer.setStyle({
+                color: '#2E7D32',
+                fillColor: '#2E7D32',
+                fillOpacity: 0.2,
+                weight: 3,
+                opacity: 0.9
+            });
+        }
+    }
+    
     // Initialize draw control
     const drawControl = new L.Control.Draw({
         edit: {
@@ -52,11 +65,36 @@ document.addEventListener('DOMContentLoaded', function() {
         draw: {
             polygon: {
                 allowIntersection: false,
-                showArea: true
+                showArea: true,
+                shapeOptions: {
+                    color: '#2E7D32',
+                    fillColor: '#2E7D32',
+                    fillOpacity: 0.2,
+                    weight: 3
+                }
             },
-            polyline: true,
-            rectangle: true,
-            circle: true,
+            polyline: {
+                shapeOptions: {
+                    color: '#2E7D32',
+                    weight: 3
+                }
+            },
+            rectangle: {
+                shapeOptions: {
+                    color: '#2E7D32',
+                    fillColor: '#2E7D32',
+                    fillOpacity: 0.2,
+                    weight: 3
+                }
+            },
+            circle: {
+                shapeOptions: {
+                    color: '#2E7D32',
+                    fillColor: '#2E7D32',
+                    fillOpacity: 0.2,
+                    weight: 3
+                }
+            },
             marker: true,
             circlemarker: false
         }
@@ -69,12 +107,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // Event handler for when a shape is created
     map.on(L.Draw.Event.CREATED, function(event) {
         const layer = event.layer;
+        
+        // Apply dog_park styling to the newly created layer
+        applyDogParkStyling(layer);
+        
         drawnItems.addLayer(layer);
     });
     
     // Event handler for when a shape is edited
     map.on(L.Draw.Event.EDITED, function(event) {
         const layers = event.layers;
+        
+        // Apply dog_park styling to all edited layers
+        layers.eachLayer(function(layer) {
+            applyDogParkStyling(layer);
+        });
+        
         // We'll handle the save in the form submission
     });
     
@@ -247,13 +295,24 @@ document.addEventListener('DOMContentLoaded', function() {
                             // Create a GeoJSON layer for the actual geometry
                             const geoJSONLayer = L.geoJSON(drawing.geometry, {
                                 style: function(feature) {
-                                    return {
-                                        color: '#4285F4', // Google blue
-                                        weight: 3,
-                                        opacity: 0.9,
-                                        fillColor: '#4285F4',
-                                        fillOpacity: 0.2
-                                    };
+                                    // Check if this is a dog_park type and apply consistent dark green styling
+                                    if (drawing.type === 'dog_park') {
+                                        return {
+                                            color: '#2E7D32', // Dark green to match paw icon
+                                            weight: 3,
+                                            opacity: 0.9,
+                                            fillColor: '#2E7D32',
+                                            fillOpacity: 0.2
+                                        };
+                                    } else {
+                                        return {
+                                            color: '#4285F4', // Google blue for other types
+                                            weight: 3,
+                                            opacity: 0.9,
+                                            fillColor: '#4285F4',
+                                            fillOpacity: 0.2
+                                        };
+                                    }
                                 },
                                 pointToLayer: function(feature, latlng) {
                                     // For point geometries, we'll handle them separately
@@ -263,6 +322,15 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             // Add all geometries to the non-point layers group
                             geoJSONLayer.eachLayer(layer => {
+                                // Store the drawing ID on the layer for reference
+                                layer.drawingId = drawing.id;
+                                layer.locationType = drawing.type;
+                                
+                                // Apply the styling directly to each layer based on type
+                                if (drawing.type === 'dog_park') {
+                                    applyDogParkStyling(layer);
+                                }
+                                
                                 nonPointLayers.addLayer(layer);
                                 
                                 // Add a popup with the name and description
@@ -292,6 +360,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // Add data to the marker for reference
                                 centerMarker.drawingId = drawing.id;
                                 centerMarker.drawingType = drawing.geometry.type;
+                                centerMarker.locationType = drawing.type; // Store location type
                                 
                                 // Add popup to the center marker
                                 if (drawing.name) {
@@ -303,6 +372,38 @@ document.addEventListener('DOMContentLoaded', function() {
                                     popupContent += `<br>Lat: ${drawing.lat.toFixed(6)}, Lng: ${drawing.lng.toFixed(6)}`;
                                     centerMarker.bindPopup(popupContent);
                                 }
+                                
+                                // Add click handler to zoom to appropriate level for geometry
+                                centerMarker.on('click', function(e) {
+                                    // Get the associated geometry
+                                    const geometry = markerToGeometryMap.get(centerMarker);
+                                    
+                                    // Calculate appropriate zoom level based on geometry type and size
+                                    const geometryType = drawing.geometry.type.toLowerCase();
+                                    
+                                    if (geometryType === 'point') {
+                                        // For points, zoom to a closer level
+                                        setTimeout(() => {
+                                            map.setView(e.latlng, 18);
+                                        }, 300);
+                                    } else if (geometry) {
+                                        // For polygons and polylines, fit to bounds with padding
+                                        // Delay the fitBounds to ensure popup opens first
+                                        setTimeout(() => {
+                                            // Get bounds of the geometry
+                                            const bounds = geometry.getBounds();
+                                            map.fitBounds(bounds, {
+                                                padding: [50, 50],
+                                                maxZoom: 19
+                                            });
+                                        }, 300);
+                                    } else {
+                                        // Fallback for any other case - just zoom in on the marker
+                                        setTimeout(() => {
+                                            map.setView(e.latlng, 18);
+                                        }, 300);
+                                    }
+                                });
                                 
                                 // Add to cluster
                                 markerCluster.addLayer(centerMarker);
@@ -323,6 +424,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Add the cluster group to the map
                 map.addLayer(markerCluster);
                 
+                // Add a global variable to store all drawings
+                window.allDrawings = drawings;
+                
+                // Force apply styling to all dog park geometries
+                nonPointLayers.eachLayer(function(layer) {
+                    // Check if the layer has location type directly
+                    if (layer.locationType === 'dog_park') {
+                        applyDogParkStyling(layer);
+                    } else if (layer.drawingId) {
+                        // Find the associated drawing
+                        const drawing = drawings.find(d => d.id === layer.drawingId);
+                        
+                        if (drawing && drawing.type === 'dog_park') {
+                            applyDogParkStyling(layer);
+                        }
+                    }
+                });
+                
                 // Function to update visibility of non-point geometries
                 function updateGeometryVisibility() {
                     // Get all clustered markers
@@ -336,12 +455,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Update visibility of all non-point geometries
                     markerToGeometryMap.forEach((geometry, marker) => {
+                        // Check if the marker is for a dog_park
+                        const isDogPark = marker.drawingId && window.allDrawings.find(d => d.id === marker.drawingId)?.type === 'dog_park';
+                        
                         if (clusteredMarkers.has(marker)) {
                             // If marker is in a cluster, hide the actual geometry
                             geometry.setStyle({ opacity: 0, fillOpacity: 0 });
                         } else {
-                            // If marker is not in a cluster, show the actual geometry
-                            geometry.setStyle({ opacity: 0.9, fillOpacity: 0.2 });
+                            // If marker is not in a cluster, show the actual geometry with appropriate styling
+                            if (isDogPark) {
+                                // Apply dark green styling for dog parks
+                                applyDogParkStyling(geometry);
+                            } else {
+                                // Default styling for other types
+                                geometry.setStyle({ 
+                                    color: '#4285F4', 
+                                    opacity: 0.9, 
+                                    fillOpacity: 0.2,
+                                    fillColor: '#4285F4',
+                                    weight: 3
+                                });
+                            }
                         }
                     });
                 }
