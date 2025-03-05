@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
+import urllib.parse
 from dotenv import load_dotenv
 
 # Load environment variables
