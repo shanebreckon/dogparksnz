@@ -22,6 +22,11 @@ This changelog tracks the history of changes to the project, helping users and d
 - Added 72px sidebar to the public map interface with drop shadow effect
 - Added hamburger menu icon to the top of the sidebar
 - Implemented sliding expanded sidebar (320px) that appears when hamburger icon is clicked
+- Implemented custom zoom level indicator as a proper Leaflet control
+  - Shows current zoom level in red text directly on the map
+  - Positioned 90px above bottom right corner and 10px from right edge
+  - Added white text shadow for better readability against map backgrounds
+  - Updates automatically when zoom level changes
 
 ### Changed
 - Removed unused files and development utilities to streamline the codebase
@@ -40,6 +45,13 @@ This changelog tracks the history of changes to the project, helping users and d
 - Moved zoom controls to the bottom right corner of the map for better usability
 - Swapped positions of scale control and attribution text for better layout
 - Removed info panel overlay box from public map for cleaner interface
+- Refined UI elements for better user experience
+  - Removed white background box from zoom level indicator
+  - Positioned zoom level indicator with proper spacing from controls
+  - Used Leaflet control lifecycle methods for better integration
+
+### Removed
+- Eliminated redundant CSS for zoom level display from public.html
 
 ### Planned
 - Search functionality for finding parks by name or features
