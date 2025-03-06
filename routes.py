@@ -11,6 +11,8 @@ import traceback
 from sqlalchemy import text
 import shapely.wkt
 from shapely.geometry import mapping
+import requests
+import time
 
 @app.route('/')
 def index():
@@ -26,6 +28,114 @@ def public():
 def admin():
     """Render the admin page with the map drawing application."""
     return render_template('admin.html')
+
+@app.route('/api/search', methods=['GET'])
+def search_locations():
+    """Search for locations based on query"""
+    query = request.args.get('q', '')
+    
+    if not query or len(query) < 2:
+        return jsonify([])
+    
+    locations = []
+    
+    try:
+        # Search for dog parks in our database
+        sql = text("""
+            SELECT TOP 10
+                id, name, description, type, 
+                lat, lng
+            FROM map_location
+            WHERE name LIKE :query
+            ORDER BY name
+        """)
+        
+        results = db.session.execute(sql, {"query": f"%{query}%"}).fetchall()
+        
+        for row in results:
+            locations.append({
+                'id': row.id,
+                'name': row.name,
+                'description': row.description,
+                'type': row.type,
+                'lat': row.lat,
+                'lng': row.lng,
+                'source': 'database'
+            })
+        
+        # If we have fewer than 10 results, search Photon API for locations in New Zealand
+        if len(locations) < 10:
+            # Use Photon API which is better for partial matches
+            photon_params = {
+                'q': query,
+                'limit': 10 - len(locations),
+                'lang': 'en',
+                'osm_tag': 'place',  # Focus on places
+                'bbox': '165.5,-47.5,179.0,-34.0'  # New Zealand bounding box
+            }
+            
+            photon_response = requests.get('https://photon.komoot.io/api/', params=photon_params)
+            
+            if photon_response.status_code == 200:
+                photon_data = photon_response.json()
+                
+                if 'features' in photon_data:
+                    for feature in photon_data['features']:
+                        if 'properties' in feature and 'geometry' in feature:
+                            properties = feature['properties']
+                            geometry = feature['geometry']
+                            
+                            # Skip if not in New Zealand
+                            if properties.get('country') != 'New Zealand':
+                                continue
+                            
+                            # Skip neighborhoods
+                            if properties.get('osm_key') == 'place' and properties.get('osm_value') == 'neighbourhood':
+                                continue
+                            
+                            # Get the name and type
+                            name = properties.get('name')
+                            if not name:
+                                continue
+                                
+                            # Determine the place type
+                            place_type = 'Location'
+                            if properties.get('city'):
+                                place_type = 'City'
+                            elif properties.get('town'):
+                                place_type = 'Town'
+                            elif properties.get('suburb'):
+                                place_type = 'Suburb'
+                            elif properties.get('village'):
+                                place_type = 'Village'
+                            
+                            # Build a description from available properties
+                            description_parts = []
+                            for part in ['city', 'state', 'suburb', 'district']:
+                                if part in properties and properties[part] != name:
+                                    description_parts.append(properties[part])
+                            
+                            description = ', '.join(description_parts) if description_parts else place_type
+                            
+                            # Get coordinates
+                            if geometry['type'] == 'Point' and len(geometry['coordinates']) >= 2:
+                                lng, lat = geometry['coordinates']
+                                
+                                locations.append({
+                                    'id': None,
+                                    'name': name,
+                                    'description': description,
+                                    'type': place_type,
+                                    'lat': lat,
+                                    'lng': lng,
+                                    'source': 'photon'
+                                })
+        
+        return jsonify(locations)
+    
+    except Exception as e:
+        app.logger.error(f"Error in search: {str(e)}")
+        return jsonify([])
 
 @app.route('/api/locations', methods=['GET'])
 def get_all_locations():

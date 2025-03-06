@@ -27,6 +27,12 @@ This changelog tracks the history of changes to the project, helping users and d
   - Positioned 90px above bottom right corner and 10px from right edge
   - Added white text shadow for better readability against map backgrounds
   - Updates automatically when zoom level changes
+- Added search functionality to the public map interface
+  - Search bar positioned at the top left, next to the sidebar
+  - Autocompletes dog parks from the database and common New Zealand locations
+  - Shows search results in a dropdown with location descriptions
+  - Flies to selected location and displays a marker
+  - Created new API endpoint (/api/search) to support location search
 
 ### Changed
 - Removed unused files and development utilities to streamline the codebase
@@ -54,7 +60,6 @@ This changelog tracks the history of changes to the project, helping users and d
 - Eliminated redundant CSS for zoom level display from public.html
 
 ### Planned
-- Search functionality for finding parks by name or features
 - User accounts with favorites and reviews
 - Mobile optimization with geolocation
 - Advanced filtering options for park amenities

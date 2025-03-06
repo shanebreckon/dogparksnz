@@ -98,6 +98,108 @@ document.addEventListener('DOMContentLoaded', function() {
     // Map to store references between center markers and actual geometries
     const markerToGeometryMap = new Map();
     
+    // Search functionality
+    const searchBox = document.getElementById('search-box');
+    const searchResults = document.getElementById('searchResults');
+    let searchTimeout = null;
+    let currentMarker = null;
+    
+    // Function to handle search input
+    searchBox.addEventListener('input', function() {
+        const query = this.value.trim();
+        
+        // Clear previous timeout
+        clearTimeout(searchTimeout);
+        
+        // Hide results if query is empty
+        if (query.length < 2) {
+            searchResults.classList.remove('active');
+            searchResults.innerHTML = '';
+            return;
+        }
+        
+        // Set a timeout to prevent too many requests
+        searchTimeout = setTimeout(() => {
+            // Show loading indicator
+            searchResults.innerHTML = '<div class="search-result-item">Searching...</div>';
+            searchResults.classList.add('active');
+            
+            fetch(`/api/search?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Clear previous results
+                    searchResults.innerHTML = '';
+                    
+                    // If no results found
+                    if (data.length === 0) {
+                        searchResults.innerHTML = '<div class="search-result-item">No results found</div>';
+                        return;
+                    }
+                    
+                    // Display results
+                    data.forEach(location => {
+                        const resultItem = document.createElement('div');
+                        resultItem.className = 'search-result-item';
+                        
+                        // Format differently based on source
+                        if (location.source === 'database') {
+                            resultItem.innerHTML = `<strong>${location.name}</strong><br><small>${location.description || location.type}</small>`;
+                        }
+                        else if (location.source === 'photon') {
+                            resultItem.innerHTML = `<strong>${location.name}</strong><br><small>${location.description}, New Zealand</small>`;
+                        }
+                        else if (location.source === 'osm') {
+                            resultItem.innerHTML = `<strong>${location.name}</strong><br><small>${location.description || location.type}, New Zealand</small>`;
+                        }
+                        else if (location.source === 'city_list') {
+                            resultItem.innerHTML = `<strong>${location.name}</strong><br><small>${location.description}</small>`;
+                        }
+                        
+                        // Add click event to fly to location
+                        resultItem.addEventListener('click', function() {
+                            // Fly to the location
+                            map.flyTo([location.lat, location.lng], 14);
+                            
+                            // Clear any existing search results
+                            searchResults.classList.remove('active');
+                            searchResults.innerHTML = '';
+                            
+                            // Format location details for display
+                            let details = formatLocationDetails(location);
+                            
+                            // Set the search box value to the formatted details
+                            searchBox.value = details;
+                            
+                            // Display location details in a toast or info box
+                            displayLocationInfo(location);
+                        });
+                        
+                        searchResults.appendChild(resultItem);
+                    });
+                    
+                    // Show results container
+                    searchResults.classList.add('active');
+                })
+                .catch(error => {
+                    console.error('Error searching locations:', error);
+                });
+        }, 300);
+    });
+    
+    // Hide search results when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!searchBox.contains(e.target) && !searchResults.contains(e.target)) {
+            searchResults.classList.remove('active');
+        }
+    });
+    
+    // Show results when focusing on search box if it has content
+    searchBox.addEventListener('focus', function() {
+        if (this.value.trim().length >= 2) {
+            searchResults.classList.add('active');
+        }
+    });
+    
     // Function to apply dog_park styling to a layer
     function applyDogParkStyling(layer) {
         if (layer.setStyle) {
@@ -321,6 +423,59 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => {
                 console.error('Error loading locations:', error);
             });
+    }
+    
+    // Function to format location details
+    function formatLocationDetails(location) {
+        // Compile all available information
+        let details = [];
+        
+        // Add name
+        details.push(location.name);
+        
+        // Add type if available
+        if (location.type) {
+            details.push(location.type);
+        }
+        
+        // Add description if available
+        if (location.description) {
+            if (typeof location.description === 'string') {
+                details.push(location.description);
+            } else if (Array.isArray(location.description)) {
+                details.push(location.description.join(', '));
+            }
+        }
+        
+        // Always add New Zealand at the end
+        details.push('New Zealand');
+        
+        // Return comma-separated string
+        return details.join(', ');
+    }
+    
+    // Function to display location information
+    function displayLocationInfo(location) {
+        // Create a toast-style notification
+        const toast = document.createElement('div');
+        toast.className = 'location-toast';
+        
+        // Use the same formatting function but with HTML for the name
+        let details = formatLocationDetails(location).replace(location.name, `<strong>${location.name}</strong>`);
+        
+        // Set the content
+        toast.innerHTML = details;
+        
+        // Add to the map container
+        document.querySelector('.leaflet-container').appendChild(toast);
+        
+        // Remove after 5 seconds
+        setTimeout(() => {
+            toast.classList.add('fade-out');
+            setTimeout(() => {
+                toast.remove();
+            }, 500);
+        }, 5000);
     }
     
     // Load all locations when the page loads
