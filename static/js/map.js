@@ -1,6 +1,16 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the map
-    const map = L.map('map').setView([-41.2865, 174.7762], 13); // Default to Wellington, NZ
+    // Define New Zealand bounds (latitude and longitude boundaries)
+    const nzBounds = L.latLngBounds(
+        L.latLng(-47.5, 165.5),  // Southwest corner
+        L.latLng(-34.0, 179.0)   // Northeast corner
+    );
+    
+    // Initialize the map with bounds restriction
+    const map = L.map('map', {
+        maxBounds: nzBounds,     // Restrict panning to these bounds
+        maxBoundsViscosity: 1.0, // Make the bounds completely solid (1.0 = cannot escape bounds)
+        minZoom: 5               // Restrict zoom out level to keep NZ in view
+    }).setView([-41.2865, 174.7762], 13); // Default to Wellington, NZ
     
     // Define base map layers
     // Add CartoDB Voyager (Google Maps-like style)

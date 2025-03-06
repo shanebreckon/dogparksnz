@@ -1,6 +1,23 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the map
-    const map = L.map('map').setView([-41.2865, 174.7762], 7); // Default to New Zealand view
+    // Define New Zealand bounds (latitude and longitude boundaries)
+    const nzBounds = L.latLngBounds(
+        L.latLng(-47.5, 165.5),  // Southwest corner
+        L.latLng(-34.0, 179.0)   // Northeast corner
+    );
+    
+    // Initialize the map with bounds restriction
+    const map = L.map('map', {
+        maxBounds: nzBounds,     // Restrict panning to these bounds
+        maxBoundsViscosity: 1.0, // Make the bounds completely solid (1.0 = cannot escape bounds)
+        minZoom: 5,              // Restrict zoom out level to keep NZ in view
+        zoomControl: false,      // Disable default zoom control to reposition it
+        attributionControl: false // Disable default attribution to reposition it
+    }).setView([-41.2865, 174.7762], 7); // Default to New Zealand view
+    
+    // Add zoom control to bottom right
+    L.control.zoom({
+        position: 'bottomright'
+    }).addTo(map);
     
     // Define base map layers
     // Add CartoDB Voyager (Google Maps-like style)
@@ -27,8 +44,52 @@ document.addEventListener('DOMContentLoaded', function() {
     
     L.control.layers(baseMaps).addTo(map);
     
-    // Add scale control
-    L.control.scale({imperial: false}).addTo(map);
+    // Add attribution control to bottom left
+    L.control.attribution({
+        position: 'bottomleft'
+    }).addTo(map);
+    
+    // Add scale control to bottom right
+    L.control.scale({
+        position: 'bottomright',
+        imperial: false
+    }).addTo(map);
+    
+    // Create a custom control for zoom level display
+    const ZoomLevelControl = L.Control.extend({
+        options: {
+            position: 'bottomright'
+        },
+        
+        onAdd: function(map) {
+            const container = L.DomUtil.create('div', 'zoom-level-control');
+            container.style.padding = '5px';
+            container.style.margin = '0 10px 90px 0'; // Position it 90px above the bottom and 10px to the left
+            container.style.color = 'red';
+            container.style.fontWeight = 'bold';
+            container.style.textShadow = '0px 0px 2px white'; // Add text shadow for readability against map
+            
+            this._container = container;
+            this._update();
+            
+            map.on('zoomend', this._update, this);
+            
+            return container;
+        },
+        
+        onRemove: function(map) {
+            map.off('zoomend', this._update, this);
+        },
+        
+        _update: function() {
+            if (this._container) {
+                this._container.innerHTML = 'Zoom: ' + map.getZoom();
+            }
+        }
+    });
+    
+    // Add the custom zoom level control to the map
+    new ZoomLevelControl().addTo(map);
     
     // Store non-point geometries in a separate layer group
     const nonPointLayers = L.featureGroup();

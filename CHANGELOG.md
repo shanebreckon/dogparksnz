@@ -19,6 +19,9 @@ This changelog tracks the history of changes to the project, helping users and d
   - Polygons: Uses the centroid of the shape
 - Center coordinates are stored in the database and included in API responses
 - Future features will be listed here before they are released
+- Added 72px sidebar to the public map interface with drop shadow effect
+- Added hamburger menu icon to the top of the sidebar
+- Implemented sliding expanded sidebar (320px) that appears when hamburger icon is clicked
 
 ### Changed
 - Removed unused files and development utilities to streamline the codebase
@@ -31,6 +34,12 @@ This changelog tracks the history of changes to the project, helping users and d
 - Deleted update_coordinates.py one-time utility script for database updates
 - Removed update_types.py one-time utility script that was superseded by proper database migration
 - Deleted runtime.txt as Python version is managed by GitHub Actions workflow
+- Added map bounds restriction to limit the view to New Zealand's geographic area
+- Improved navigation between public and admin views with clearer links and styling
+- Removed admin view button from the public map interface
+- Moved zoom controls to the bottom right corner of the map for better usability
+- Swapped positions of scale control and attribution text for better layout
+- Removed info panel overlay box from public map for cleaner interface
 
 ### Planned
 - Search functionality for finding parks by name or features

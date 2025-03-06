@@ -21,56 +21,122 @@
         body {
             padding: 0;
             margin: 0;
+            display: flex;
+            overflow-x: hidden; /* Prevent horizontal scrolling */
+        }
+        .sidebar {
+            width: 72px;
+            height: 100vh;
+            background-color: white;
+            z-index: 1000;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .expanded-sidebar {
+            position: absolute;
+            left: -320px; /* Start off-screen */
+            width: 320px;
+            height: 100vh;
+            background-color: white;
+            z-index: 1001; /* Higher than sidebar */
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease-in-out;
+            padding: 20px;
+        }
+        .expanded-sidebar.active {
+            transform: translateX(320px); /* Slide in */
+        }
+        .hamburger-icon {
+            margin-top: 20px;
+            cursor: pointer;
+            color: #555;
+            transition: color 0.3s ease;
+        }
+        .hamburger-icon:hover {
+            color: #2E7D32;
+        }
+        .map-container {
+            flex: 1;
+            position: relative;
+            height: 100vh;
         }
         #map {
-            height: 100vh;
+            height: 100%;
             width: 100%;
         }
-        .info-panel {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 1000;
-            background-color: white;
-            padding: 15px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            max-width: 300px;
+        /* Custom positioning for zoom controls */
+        .leaflet-control-zoom {
+            position: absolute !important;
+            bottom: 40px !important;
+            right: 20px !important;
+            margin: 0 !important;
         }
-        .site-title {
-            margin-top: 0;
+        .close-sidebar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            cursor: pointer;
+            color: #555;
+        }
+        .close-sidebar:hover {
+            color: #2E7D32;
+        }
+        .expanded-sidebar h3 {
+            margin-top: 10px;
             color: #2E7D32;
             font-weight: bold;
-        }
-        .admin-link {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            z-index: 1000;
-            background-color: white;
-            padding: 5px 10px;
-            border-radius: 3px;
-            text-decoration: none;
-            color: #666;
-            font-size: 12px;
         }
     </style>
 </head>
 <body>
-    <div id="map"></div>
-    
-    <div class="info-panel">
-        <h3 class="site-title">Dog Parks NZ</h3>
-        <p>Explore dog-friendly parks across New Zealand. Click on markers to zoom to locations.</p>
+    <!-- Expanded sidebar that slides in -->
+    <div class="expanded-sidebar" id="expandedSidebar">
+        <div class="close-sidebar" id="closeSidebar">
+            <i class="material-icons">close</i>
+        </div>
+        <h3>Dog Parks NZ</h3>
+        <p>Explore dog parks across New Zealand.</p>
+        <p>Click on markers to view details about each dog park.</p>
+        <!-- Additional content can be added here -->
     </div>
     
-    <a href="/admin" class="admin-link">Admin Login</a>
+    <div class="sidebar">
+        <!-- Hamburger icon -->
+        <div class="hamburger-icon" id="hamburgerIcon">
+            <i class="material-icons" style="font-size: 32px;">menu</i>
+        </div>
+    </div>
+    
+    <div class="map-container">
+        <div id="map"></div>
+    </div>
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-    <!-- Leaflet MarkerCluster -->
+    <!-- MarkerCluster JS -->
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-    <!-- Public Map JS -->
+    <!-- Custom JS -->
     <script src="{{ url_for('static', filename='js/public-map.js') }}"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const hamburgerIcon = document.getElementById('hamburgerIcon');
+            const expandedSidebar = document.getElementById('expandedSidebar');
+            const closeSidebar = document.getElementById('closeSidebar');
+            
+            // Toggle expanded sidebar when hamburger icon is clicked
+            hamburgerIcon.addEventListener('click', function() {
+                expandedSidebar.classList.add('active');
+            });
+            
+            // Close expanded sidebar when close button is clicked
+            closeSidebar.addEventListener('click', function() {
+                expandedSidebar.classList.remove('active');
+            });
+        });
+    </script>
 </body>
 </html>
