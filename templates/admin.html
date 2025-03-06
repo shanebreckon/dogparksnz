@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Map Drawing Application</title>
+    <title>Dog Parks NZ - Admin</title>
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <!-- Google Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     
@@ -48,11 +50,24 @@
         .drawing-list {
             margin-top: 20px;
         }
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .back-to-site {
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1 class="mt-4 mb-4">Map Drawing Application</h1>
+        <div class="admin-header mt-4 mb-4">
+            <h1>Dog Parks NZ - Admin</h1>
+            <a href="/" class="btn btn-outline-secondary back-to-site">
+                <i class="material-icons" style="vertical-align: middle;">arrow_back</i> Back to Public Site
+            </a>
+        </div>
         
         <div class="container mt-4">
             <div class="row">
@@ -62,7 +77,7 @@
                 <div class="col-md-4">
                     <div class="card mb-3">
                         <div class="card-header">
-                            <h5>Add/Edit Drawing</h5>
+                            <h5>Add/Edit Location</h5>
                         </div>
                         <div class="card-body">
                             <form id="drawing-form">
@@ -74,6 +89,12 @@
                                     <label for="drawing-description" class="form-label">Description</label>
                                     <textarea class="form-control" id="drawing-description" rows="3"></textarea>
                                 </div>
+                                <div class="mb-3">
+                                    <label for="location-type" class="form-label">Location Type</label>
+                                    <select class="form-control" id="location-type">
+                                        <option value="dog_park" selected>Dog Park</option>
+                                    </select>
+                                </div>
                                 <div class="d-grid gap-2">
                                     <button type="submit" class="btn btn-primary">Save</button>
                                     <button type="button" id="clear-drawing" class="btn btn-secondary">Clear</button>
@@ -84,7 +105,7 @@
                     
                     <div class="card">
                         <div class="card-header">
-                            <h5>Saved Drawings</h5>
+                            <h5>Saved Locations</h5>
                         </div>
                         <div class="card-body">
                             <ul id="drawings" class="list-group">
@@ -99,15 +120,11 @@
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-    <!-- Leaflet Draw JS -->
+    <!-- Leaflet Draw -->
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-    <!-- MarkerCluster JS -->
+    <!-- Leaflet MarkerCluster -->
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-    <!-- Bootstrap JS (optional) -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Custom JS -->
+    <!-- Admin Map JS -->
     <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 </body>
 </html>

@@ -332,15 +332,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                                 
                                 nonPointLayers.addLayer(layer);
-                                
-                                // Add a popup with the name and description
-                                if (drawing.name) {
-                                    let popupContent = `<strong>${drawing.name}</strong>`;
-                                    if (drawing.description) {
-                                        popupContent += `<br>${drawing.description}`;
-                                    }
-                                    layer.bindPopup(popupContent);
-                                }
                             });
                             
                             // Create a marker at the center coordinates
@@ -361,17 +352,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 centerMarker.drawingId = drawing.id;
                                 centerMarker.drawingType = drawing.geometry.type;
                                 centerMarker.locationType = drawing.type; // Store location type
-                                
-                                // Add popup to the center marker
-                                if (drawing.name) {
-                                    let popupContent = `<strong>${drawing.name}</strong>`;
-                                    if (drawing.description) {
-                                        popupContent += `<br>${drawing.description}`;
-                                    }
-                                    // Add coordinates to the popup
-                                    popupContent += `<br>Lat: ${drawing.lat.toFixed(6)}, Lng: ${drawing.lng.toFixed(6)}`;
-                                    centerMarker.bindPopup(popupContent);
-                                }
                                 
                                 // Add click handler to zoom to appropriate level for geometry
                                 centerMarker.on('click', function(e) {
@@ -569,15 +549,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         geoJSONLayer.eachLayer(layer => {
-            // Add a popup with the name and description
-            if (drawing.name) {
-                let popupContent = `<strong>${drawing.name}</strong>`;
-                if (drawing.description) {
-                    popupContent += `<br>${drawing.description}`;
-                }
-                layer.bindPopup(popupContent);
-            }
-            
             // Store drawing type for non-point features
             if (!(layer instanceof L.CircleMarker) && drawing.geometry.type) {
                 layer.drawingType = drawing.geometry.type;

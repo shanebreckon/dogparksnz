@@ -14,8 +14,18 @@ from shapely.geometry import mapping
 
 @app.route('/')
 def index():
-    """Render the main page with the map."""
-    return render_template('index.html')
+    """Render the public page with the map."""
+    return render_template('public.html')
+
+@app.route('/public')
+def public():
+    """Render the public page with the map."""
+    return render_template('public.html')
+
+@app.route('/admin')
+def admin():
+    """Render the admin page with the map drawing application."""
+    return render_template('admin.html')
 
 @app.route('/api/locations', methods=['GET'])
 def get_all_locations():

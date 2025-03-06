@@ -20,6 +20,18 @@ This changelog tracks the history of changes to the project, helping users and d
 - Center coordinates are stored in the database and included in API responses
 - Future features will be listed here before they are released
 
+### Changed
+- Removed unused files and development utilities to streamline the codebase
+- Transitioned fully to Azure SQL Database, removing SQLite database files
+- Removed test_app.py Flask test file that was no longer needed
+- Deleted templates/fixed_index.html duplicate template file
+- Removed build.sh script as GitHub Actions is used for Azure deployment
+- Deleted .deployment and deploy.sh files that were redundant with GitHub Actions workflow
+- Removed requirements-azure.txt as it was identical to requirements.txt
+- Deleted update_coordinates.py one-time utility script for database updates
+- Removed update_types.py one-time utility script that was superseded by proper database migration
+- Deleted runtime.txt as Python version is managed by GitHub Actions workflow
+
 ### Planned
 - Search functionality for finding parks by name or features
 - User accounts with favorites and reviews
