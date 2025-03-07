@@ -14,6 +14,196 @@ document.addEventListener('DOMContentLoaded', function() {
         attributionControl: false // Disable default attribution to reposition it
     }).setView([-41.2865, 174.7762], 7); // Default to New Zealand view
     
+    // Make map globally available
+    window.dogParksMap = map;
+    
+    // Create a global object to store markers by location ID
+    window.dogParkMarkers = {};
+    
+    // Create a global object to track which cluster contains each marker
+    window.markerClusters = {};
+    
+    // Track active animation timeouts to cancel them if needed
+    window.activeAnimations = {};
+    
+    // Function to update the marker-to-cluster mapping
+    window.updateClusterMapping = function() {
+        // Clear previous cluster mappings
+        window.markerClusters = {};
+        
+        // Find all marker clusters in the map
+        map.eachLayer(function(layer) {
+            // Check if this is a marker cluster group
+            if (layer._featureGroup && layer._maxZoom) {
+                // This is likely a marker cluster group
+                layer._featureGroup.getLayers().forEach(function(subLayer) {
+                    if (subLayer instanceof L.MarkerCluster) {
+                        // This is a cluster
+                        const childMarkers = subLayer.getAllChildMarkers();
+                        
+                        // Map each child marker ID to this cluster
+                        childMarkers.forEach(function(marker) {
+                            if (marker.locationId) {
+                                window.markerClusters[marker.locationId] = subLayer;
+                            }
+                        });
+                    }
+                });
+            }
+        });
+        
+        console.log("Updated cluster mapping, found clusters for", Object.keys(window.markerClusters).length, "markers");
+    };
+    
+    // Function to stop any active animations for a marker
+    window.stopMarkerAnimation = function(markerId) {
+        // Clear all timeouts for this marker
+        if (window.activeAnimations[markerId]) {
+            window.activeAnimations[markerId].forEach(timeoutId => {
+                clearTimeout(timeoutId);
+            });
+            
+            // Reset the marker or cluster appearance
+            const marker = window.dogParkMarkers[markerId];
+            if (marker && marker._icon) {
+                marker._icon.style.transition = '';
+                marker._icon.style.transform = marker._originalTransform || '';
+                marker._icon.style.zIndex = '';
+            }
+            
+            // Check if the marker is in a cluster and reset that too
+            if (window.markerClusters[markerId]) {
+                const cluster = window.markerClusters[markerId];
+                if (cluster && cluster._icon) {
+                    cluster._icon.style.transition = '';
+                    cluster._icon.style.transform = cluster._originalTransform || '';
+                    cluster._icon.style.zIndex = '';
+                }
+            }
+            
+            // Clear the animation tracking
+            delete window.activeAnimations[markerId];
+        }
+    };
+    
+    // Function to pulse a marker (grow and shrink 3 times)
+    window.pulseMarker = function(markerId) {
+        // First stop any existing animation
+        window.stopMarkerAnimation(markerId);
+        
+        const marker = window.dogParkMarkers[markerId];
+        if (!marker) return;
+        
+        // Initialize animation tracking array
+        window.activeAnimations[markerId] = [];
+        
+        // Check if the marker is part of a cluster
+        if (window.markerClusters[markerId]) {
+            // Animate the cluster instead
+            pulseCluster(markerId, window.markerClusters[markerId]);
+            return;
+        }
+        
+        // Get the marker element
+        const markerElement = marker._icon;
+        if (!markerElement) return;
+        
+        // Add CSS transition for smooth animation
+        markerElement.style.transition = 'transform 0.3s ease-in-out';
+        
+        // Save original transform and add CSS transform-origin to keep centered
+        const originalTransform = markerElement.style.transform || '';
+        marker._originalTransform = originalTransform;
+        markerElement.style.transformOrigin = 'center center';
+        markerElement.style.zIndex = 1000; // Bring to front
+        
+        // Define the animation
+        let pulseCount = 0;
+        const maxPulses = 3;
+        
+        function pulse() {
+            // Grow by 20%
+            markerElement.style.transform = `${originalTransform} scale(1.2)`;
+            
+            // Store the timeout ID so we can cancel it if needed
+            const shrinkTimeoutId = setTimeout(() => {
+                // Shrink back
+                markerElement.style.transform = originalTransform;
+                
+                pulseCount++;
+                if (pulseCount < maxPulses) {
+                    // Continue pulsing
+                    const nextPulseTimeoutId = setTimeout(pulse, 300);
+                    window.activeAnimations[markerId].push(nextPulseTimeoutId);
+                } else {
+                    // Reset z-index and transition after animation completes
+                    const cleanupTimeoutId = setTimeout(() => {
+                        markerElement.style.zIndex = '';
+                        markerElement.style.transition = '';
+                    }, 300);
+                    window.activeAnimations[markerId].push(cleanupTimeoutId);
+                }
+            }, 300);
+            
+            window.activeAnimations[markerId].push(shrinkTimeoutId);
+        }
+        
+        // Start the pulse animation
+        pulse();
+    };
+    
+    // Function to pulse a cluster (grow and shrink 3 times)
+    function pulseCluster(markerId, cluster) {
+        if (!cluster) return;
+        
+        // Get the cluster icon element
+        const clusterElement = cluster._icon;
+        if (!clusterElement) return;
+        
+        // Add CSS transition for smooth animation
+        clusterElement.style.transition = 'transform 0.3s ease-in-out';
+        
+        // Save original transform and add CSS transform-origin to keep centered
+        const originalTransform = clusterElement.style.transform || '';
+        cluster._originalTransform = originalTransform;
+        clusterElement.style.transformOrigin = 'center center';
+        clusterElement.style.zIndex = 1000; // Bring to front
+        
+        // Define the animation
+        let pulseCount = 0;
+        const maxPulses = 3;
+        
+        function pulse() {
+            // Grow by 20%
+            clusterElement.style.transform = `${originalTransform} scale(1.2)`;
+            
+            // Store the timeout ID so we can cancel it if needed
+            const shrinkTimeoutId = setTimeout(() => {
+                // Shrink back
+                clusterElement.style.transform = originalTransform;
+                
+                pulseCount++;
+                if (pulseCount < maxPulses) {
+                    // Continue pulsing
+                    const nextPulseTimeoutId = setTimeout(pulse, 300);
+                    window.activeAnimations[markerId].push(nextPulseTimeoutId);
+                } else {
+                    // Reset z-index and transition after animation completes
+                    const cleanupTimeoutId = setTimeout(() => {
+                        clusterElement.style.zIndex = '';
+                        clusterElement.style.transition = '';
+                    }, 300);
+                    window.activeAnimations[markerId].push(cleanupTimeoutId);
+                }
+            }, 300);
+            
+            window.activeAnimations[markerId].push(shrinkTimeoutId);
+        }
+        
+        // Start the pulse animation
+        pulse();
+    }
+    
     // Add zoom control to bottom right
     L.control.zoom({
         position: 'bottomright'
@@ -101,6 +291,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Search functionality
     const searchBox = document.getElementById('search-box');
     const searchResults = document.getElementById('searchResults');
+    const searchClear = document.getElementById('search-clear');
     let searchTimeout = null;
     let currentMarker = null;
     
@@ -108,31 +299,39 @@ document.addEventListener('DOMContentLoaded', function() {
     searchBox.addEventListener('input', function() {
         const query = this.value.trim();
         
-        // Clear previous timeout
-        clearTimeout(searchTimeout);
+        // Show/hide clear button based on input content
+        if (query !== '') {
+            searchClear.classList.add('visible');
+        } else {
+            searchClear.classList.remove('visible');
+        }
         
-        // Hide results if query is empty
-        if (query.length < 2) {
-            searchResults.classList.remove('active');
+        // Clear any existing timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+        }
+        
+        // Clear search results if query is empty
+        if (query === '') {
             searchResults.innerHTML = '';
+            searchResults.classList.remove('active');
+            searchBox.classList.remove('results-visible');
             return;
         }
         
-        // Set a timeout to prevent too many requests
+        // Set a timeout to avoid making too many requests
         searchTimeout = setTimeout(() => {
-            // Show loading indicator
-            searchResults.innerHTML = '<div class="search-result-item">Searching...</div>';
-            searchResults.classList.add('active');
-            
+            // Make API request to search for locations
             fetch(`/api/search?q=${encodeURIComponent(query)}`)
                 .then(response => response.json())
                 .then(data => {
                     // Clear previous results
                     searchResults.innerHTML = '';
                     
-                    // If no results found
+                    // If no results, hide the results container
                     if (data.length === 0) {
-                        searchResults.innerHTML = '<div class="search-result-item">No results found</div>';
+                        searchResults.classList.remove('active');
+                        searchBox.classList.remove('results-visible');
                         return;
                     }
                     
@@ -141,18 +340,18 @@ document.addEventListener('DOMContentLoaded', function() {
                         const resultItem = document.createElement('div');
                         resultItem.className = 'search-result-item';
                         
-                        // Format differently based on source
-                        if (location.source === 'database') {
-                            resultItem.innerHTML = `<strong>${location.name}</strong><br><small>${location.description || location.type}</small>`;
-                        }
-                        else if (location.source === 'photon') {
-                            resultItem.innerHTML = `<strong>${location.name}</strong><br><small>${location.description}, New Zealand</small>`;
-                        }
-                        else if (location.source === 'osm') {
-                            resultItem.innerHTML = `<strong>${location.name}</strong><br><small>${location.description || location.type}, New Zealand</small>`;
-                        }
-                        else if (location.source === 'city_list') {
-                            resultItem.innerHTML = `<strong>${location.name}</strong><br><small>${location.description}</small>`;
+                        // Create name element
+                        const nameElement = document.createElement('div');
+                        nameElement.className = 'result-name';
+                        nameElement.textContent = location.name;
+                        resultItem.appendChild(nameElement);
+                        
+                        // Create description element if available
+                        if (location.description) {
+                            const descElement = document.createElement('div');
+                            descElement.className = 'result-description';
+                            descElement.textContent = location.description;
+                            resultItem.appendChild(descElement);
                         }
                         
                         // Add click event to fly to location
@@ -162,6 +361,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             // Clear any existing search results
                             searchResults.classList.remove('active');
+                            searchBox.classList.remove('results-visible');
                             searchResults.innerHTML = '';
                             
                             // Format location details for display
@@ -174,29 +374,55 @@ document.addEventListener('DOMContentLoaded', function() {
                             displayLocationInfo(location);
                         });
                         
+                        // Add to results container
                         searchResults.appendChild(resultItem);
                     });
                     
                     // Show results container
                     searchResults.classList.add('active');
+                    searchBox.classList.add('results-visible');
                 })
                 .catch(error => {
-                    console.error('Error searching locations:', error);
+                    console.error('Error searching for locations:', error);
                 });
-        }, 300);
+        }, 300); // 300ms delay
     });
     
+    // Clear search box when X is clicked
+    searchClear.addEventListener('click', function() {
+        // Clear search box
+        searchBox.value = '';
+        
+        // Hide clear button
+        searchClear.classList.remove('visible');
+        
+        // Hide search results
+        searchResults.innerHTML = '';
+        searchResults.classList.remove('active');
+        searchBox.classList.remove('results-visible');
+        
+        // Focus on search box
+        searchBox.focus();
+    });
+    
+    // Show clear button if search box has content on page load
+    if (searchBox.value.trim() !== '') {
+        searchClear.classList.add('visible');
+    }
+    
     // Hide search results when clicking outside
-    document.addEventListener('click', function(e) {
-        if (!searchBox.contains(e.target) && !searchResults.contains(e.target)) {
+    document.addEventListener('click', function(event) {
+        if (!searchBox.contains(event.target) && !searchResults.contains(event.target)) {
             searchResults.classList.remove('active');
+            searchBox.classList.remove('results-visible');
         }
     });
     
-    // Show results when focusing on search box if it has content
+    // Show results when search box is focused if it has content
     searchBox.addEventListener('focus', function() {
-        if (this.value.trim().length >= 2) {
+        if (this.value.trim() !== '' && searchResults.children.length > 0) {
             searchResults.classList.add('active');
+            searchBox.classList.add('results-visible');
         }
     });
     
@@ -249,6 +475,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     removeOutsideVisibleBounds: true,
                     animate: true,
                     animateAddingMarkers: true
+                });
+                
+                // Track cluster changes to update our marker-to-cluster mapping
+                markerCluster.on('clustered', function(event) {
+                    window.updateClusterMapping();
+                });
+                
+                // Also update cluster mapping when zoom changes
+                map.on('zoomend', function() {
+                    // Wait a bit for clusters to update
+                    setTimeout(function() {
+                        window.updateClusterMapping();
+                    }, 300);
+                });
+                
+                // Update cluster mapping when map moves
+                map.on('moveend', function() {
+                    // Wait a bit for clusters to update
+                    setTimeout(function() {
+                        window.updateClusterMapping();
+                    }, 300);
                 });
                 
                 locations.forEach(location => {
@@ -304,6 +551,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 centerMarker.locationId = location.id;
                                 centerMarker.drawingType = location.geometry.type;
                                 centerMarker.locationType = location.type;
+                                
+                                // Store marker in global object for access from dog_parks.js
+                                if (location.type === 'dog_park') {
+                                    window.dogParkMarkers[location.id] = centerMarker;
+                                }
                                 
                                 // Add click handler to zoom to appropriate level for geometry
                                 centerMarker.on('click', function(e) {

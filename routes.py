@@ -543,6 +543,38 @@ def delete_location(location_id):
         error_msg = f"Error deleting location: {str(e)}"
         return jsonify({"success": False, "error": error_msg}), 500
 
+@app.route('/api/dog_parks', methods=['GET'])
+def get_dog_parks():
+    """Get all dog parks from the database."""
+    try:
+        # Query specifically for dog_park type locations
+        sql = text("""
+            SELECT 
+                id, name, description, type, 
+                lat, lng
+            FROM map_location
+            WHERE type = 'dog_park'
+            ORDER BY name
+        """)
+        
+        results = db.session.execute(sql).fetchall()
+        
+        parks = []
+        for row in results:
+            parks.append({
+                'id': row.id,
+                'name': row.name,
+                'description': row.description,
+                'type': row.type,
+                'lat': row.lat,
+                'lng': row.lng
+            })
+        
+        return jsonify(parks)
+    except Exception as e:
+        app.logger.error(f"Error fetching dog parks: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/test-geography', methods=['POST'])
 def test_geography():
     """Test endpoint to diagnose Geography data type issues."""

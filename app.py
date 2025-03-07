@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import urllib.parse
 from dotenv import load_dotenv
+from flask import jsonify
 
 # Load environment variables
 load_dotenv()
