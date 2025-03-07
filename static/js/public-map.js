@@ -26,6 +26,73 @@ document.addEventListener('DOMContentLoaded', function() {
     // Track active animation timeouts to cancel them if needed
     window.activeAnimations = {};
     
+    // Create a tooltip element for markers
+    const markerTooltip = document.createElement('div');
+    markerTooltip.className = 'marker-tooltip';
+    document.body.appendChild(markerTooltip);
+    
+    // Function to show tooltip for a marker
+    function showMarkerTooltip(marker, locationName) {
+        if (!marker || !marker._icon) return;
+        
+        // Set tooltip content
+        markerTooltip.textContent = locationName;
+        
+        // Get marker position
+        const markerRect = marker._icon.getBoundingClientRect();
+        const markerCenterX = markerRect.left + (markerRect.width / 2);
+        const markerCenterY = markerRect.top + (markerRect.height / 2);
+        
+        // Get map container dimensions
+        const mapContainer = document.getElementById('map');
+        const mapRect = mapContainer.getBoundingClientRect();
+        
+        // Determine if marker is in top or bottom half of the map
+        const isTopHalf = markerCenterY < (mapRect.top + mapRect.height / 2);
+        
+        // Check if there's enough room on both sides within the map
+        const tooltipWidth = 300; // Same as CSS width
+        const leftSpace = markerCenterX - mapRect.left;
+        const rightSpace = mapRect.right - markerCenterX;
+        const halfTooltipWidth = tooltipWidth / 2;
+        
+        // Position tooltip based on marker location and available space
+        if (isTopHalf) {
+            // Place tooltip below marker
+            markerTooltip.style.top = `${markerRect.bottom + 15}px`;
+            markerTooltip.classList.remove('top');
+            markerTooltip.classList.add('bottom');
+        } else {
+            // Place tooltip above marker
+            markerTooltip.style.top = `${markerRect.top - 15}px`;
+            markerTooltip.classList.remove('bottom');
+            markerTooltip.classList.add('top');
+        }
+        
+        // Check horizontal space and adjust accordingly
+        if (leftSpace < halfTooltipWidth) {
+            // Not enough space on the left, align left edge with left edge of map with padding
+            markerTooltip.style.left = `${mapRect.left + 10}px`;
+            markerTooltip.style.transform = isTopHalf ? 'translate(0, 0)' : 'translate(0, -100%)';
+        } else if (rightSpace < halfTooltipWidth) {
+            // Not enough space on the right, align right edge with right edge of map with padding
+            markerTooltip.style.left = `${mapRect.right - 10}px`;
+            markerTooltip.style.transform = isTopHalf ? 'translate(-100%, 0)' : 'translate(-100%, -100%)';
+        } else {
+            // Enough space on both sides, center on marker
+            markerTooltip.style.left = `${markerCenterX}px`;
+            markerTooltip.style.transform = isTopHalf ? 'translate(-50%, 0)' : 'translate(-50%, -100%)';
+        }
+        
+        // Show tooltip
+        markerTooltip.classList.add('visible');
+    }
+    
+    // Function to hide tooltip
+    function hideMarkerTooltip() {
+        markerTooltip.classList.remove('visible');
+    }
+    
     // Function to update the marker-to-cluster mapping
     window.updateClusterMapping = function() {
         // Clear previous cluster mappings
@@ -555,38 +622,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // Store marker in global object for access from dog_parks.js
                                 if (location.type === 'dog_park') {
                                     window.dogParkMarkers[location.id] = centerMarker;
+                                    
+                                    // Add hover events for tooltip
+                                    centerMarker.on('mouseover', function() {
+                                        showMarkerTooltip(centerMarker, location.name);
+                                    });
+                                    
+                                    centerMarker.on('mouseout', function() {
+                                        hideMarkerTooltip();
+                                    });
                                 }
-                                
-                                // Add click handler to zoom to appropriate level for geometry
-                                centerMarker.on('click', function(e) {
-                                    // Get the associated geometry
-                                    const geometry = markerToGeometryMap.get(centerMarker);
-                                    
-                                    // Calculate appropriate zoom level based on geometry type and size
-                                    const geometryType = location.geometry.type.toLowerCase();
-                                    
-                                    if (geometryType === 'point') {
-                                        // For points, zoom to a closer level
-                                        setTimeout(() => {
-                                            map.setView(e.latlng, 18);
-                                        }, 300);
-                                    } else if (geometry) {
-                                        // For polygons and polylines, fit to bounds with padding
-                                        setTimeout(() => {
-                                            // Get bounds of the geometry
-                                            const bounds = geometry.getBounds();
-                                            map.fitBounds(bounds, {
-                                                padding: [50, 50],
-                                                maxZoom: 19
-                                            });
-                                        }, 300);
-                                    } else {
-                                        // Fallback for any other case - just zoom in on the marker
-                                        setTimeout(() => {
-                                            map.setView(e.latlng, 18);
-                                        }, 300);
-                                    }
-                                });
                                 
                                 // Add to cluster
                                 markerCluster.addLayer(centerMarker);

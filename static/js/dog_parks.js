@@ -144,28 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
-            // Add click event to highlight on map
-            card.addEventListener('click', function() {
-                // Center map on this park
-                if (window.dogParksMap && park.lat && park.lng) {
-                    window.dogParksMap.setView([park.lat, park.lng], 15);
-                    
-                    // Create a temporary highlight effect
-                    const highlightMarker = L.circleMarker([park.lat, park.lng], {
-                        radius: 30,
-                        color: '#2E7D32',
-                        fillColor: '#4CAF50',
-                        fillOpacity: 0.3,
-                        weight: 2
-                    }).addTo(window.dogParksMap);
-                    
-                    // Remove the highlight after 2 seconds
-                    setTimeout(() => {
-                        window.dogParksMap.removeLayer(highlightMarker);
-                    }, 2000);
-                }
-            });
-            
+            // Add to the list
             parksList.appendChild(card);
         });
         
