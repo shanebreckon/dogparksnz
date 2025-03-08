@@ -14,6 +14,14 @@ from shapely.geometry import mapping
 import requests
 import time
 import difflib
+import unicodedata
+
+# Function to normalize text by removing macrons
+def normalize_text(text):
+    # Normalize to decomposed form (separates base characters from diacritical marks)
+    decomposed = unicodedata.normalize('NFD', text)
+    # Remove diacritical marks and return
+    return ''.join(c for c in decomposed if not unicodedata.combining(c))
 
 @app.route('/')
 def index():
@@ -120,12 +128,19 @@ def search_locations():
                                 continue
                                 
                             # Check if query is actually part of the name (case insensitive)
-                            if query.lower() not in name.lower():
+                            # Normalize both the query and name to handle macrons
+                            normalized_query = normalize_text(query.lower())
+                            normalized_name = normalize_text(name.lower())
+                            
+                            if normalized_query not in normalized_name:
                                 continue
                             
                             # Determine the place type
                             place_type = 'Location'
-                            if properties.get('city'):
+                            major_nz_cities = ['Wellington', 'Auckland', 'Christchurch', 'Hamilton', 'Tauranga', 'Dunedin']
+                            if name in major_nz_cities:
+                                place_type = 'City'
+                            elif properties.get('city'):
                                 place_type = 'City'
                             elif properties.get('town'):
                                 place_type = 'Town'
@@ -166,16 +181,21 @@ def search_locations():
                                 })
         
         # Generate suggestions based on all location names
-        suggestions = difflib.get_close_matches(query.lower(), [name.lower() for name in all_location_names], n=3, cutoff=0.5)
+        # Create a mapping of normalized names to original names for macron handling
+        normalized_to_original = {}
+        normalized_location_names = []
         
-        # Convert suggestions back to proper case
-        proper_case_suggestions = []
-        for suggestion in suggestions:
-            # Find the original proper case version
-            for original_name in all_location_names:
-                if original_name.lower() == suggestion:
-                    proper_case_suggestions.append(original_name)
-                    break
+        for name in all_location_names:
+            normalized_name = normalize_text(name.lower())
+            normalized_location_names.append(normalized_name)
+            normalized_to_original[normalized_name] = name
+        
+        # Get close matches using normalized names
+        normalized_query = normalize_text(query.lower())
+        normalized_suggestions = difflib.get_close_matches(normalized_query, normalized_location_names, n=3, cutoff=0.5)
+        
+        # Convert suggestions back to original names with proper case and macrons
+        proper_case_suggestions = [normalized_to_original[suggestion] for suggestion in normalized_suggestions if suggestion in normalized_to_original]
         
         # If we have no results but need suggestions, use Photon API with relaxed parameters
         if len(locations) == 0 and len(proper_case_suggestions) < 3:

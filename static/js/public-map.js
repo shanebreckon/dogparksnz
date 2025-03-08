@@ -361,6 +361,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const searchClear = document.getElementById('search-clear');
     const searchLoading = document.getElementById('search-loading');
     const searchIcon = document.getElementById('search-icon');
+    const searchContainer = document.querySelector('.search-container');
     let searchTimeout = null;
     let currentMarker = null;
     
@@ -379,6 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
             searchResults.classList.remove('active');
             searchBox.classList.remove('results-visible');
             searchLoading.style.display = 'none';
+            searchClear.style.display = 'none';
             searchIcon.classList.remove('search-icon-hidden');
             searchBox.value = '';
         }
@@ -523,11 +525,39 @@ document.addEventListener('DOMContentLoaded', function() {
                                 searchBox.classList.remove('results-visible');
                                 searchResults.innerHTML = '';
                                 
+                                // Keep the search container expanded since we have content
+                                searchContainer.classList.add('expanded');
+                                
                                 // Format location details for display
                                 let details = formatLocationDetails(location);
                                 
                                 // Set the search box value to the formatted details
                                 searchBox.value = details;
+                                
+                                // Only show the red marker for map locations (not location types from DB)
+                                // Check if this is a search result location from Photon API
+                                if (location.source === 'photon') {
+                                    // Remove any existing marker
+                                    if (currentMarker) {
+                                        map.removeLayer(currentMarker);
+                                    }
+                                    
+                                    // Add a red pin marker at the location
+                                    currentMarker = L.marker([location.lat, location.lng], {
+                                        icon: L.divIcon({
+                                            className: 'custom-pin-marker',
+                                            html: '<span class="material-icons" style="color: #e53935; font-size: 32px;">place</span>',
+                                            iconSize: [32, 32],
+                                            iconAnchor: [16, 32]
+                                        })
+                                    }).addTo(map);
+                                } else {
+                                    // For location types from DB, remove any existing marker
+                                    if (currentMarker) {
+                                        map.removeLayer(currentMarker);
+                                        currentMarker = null;
+                                    }
+                                }
                                 
                                 // Display location details in a toast or info box
                                 displayLocationInfo(location);
@@ -552,7 +582,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Clear search box when X is clicked
-    searchClear.addEventListener('click', function() {
+    searchClear.addEventListener('click', function(event) {
+        // Prevent the event from propagating to document click handler
+        event.stopPropagation();
+        
         searchBox.value = '';
         this.classList.remove('visible');
         searchResults.innerHTML = '';
@@ -561,6 +594,9 @@ document.addEventListener('DOMContentLoaded', function() {
         searchLoading.style.display = 'none';
         searchClear.style.display = 'none';
         searchIcon.classList.remove('search-icon-hidden');
+        
+        // Ensure the search container stays expanded since the search box still has focus
+        searchContainer.classList.add('expanded');
         
         // Place cursor in the search box
         searchBox.focus();
@@ -571,19 +607,40 @@ document.addEventListener('DOMContentLoaded', function() {
         searchClear.classList.add('visible');
     }
     
+    // Show results when search box is focused if it has content
+    searchBox.addEventListener('focus', function() {
+        // Expand the search container
+        searchContainer.classList.add('expanded');
+        
+        // Select all text in the search box when focused
+        if (this.value.trim() !== '') {
+            this.select();
+        }
+        
+        if (this.value.trim() !== '' && searchResults.children.length > 0) {
+            searchResults.classList.add('active');
+            searchBox.classList.add('results-visible');
+        }
+    });
+    
+    // Contract the search container when focus is lost and there are no results showing
+    searchBox.addEventListener('blur', function() {
+        // Only contract if search results are not active AND the search box is empty
+        if (!searchResults.classList.contains('active') && this.value.trim() === '') {
+            searchContainer.classList.remove('expanded');
+        }
+    });
+    
     // Hide search results when clicking outside
     document.addEventListener('click', function(event) {
         if (!searchBox.contains(event.target) && !searchResults.contains(event.target)) {
             searchResults.classList.remove('active');
             searchBox.classList.remove('results-visible');
-        }
-    });
-    
-    // Show results when search box is focused if it has content
-    searchBox.addEventListener('focus', function() {
-        if (this.value.trim() !== '' && searchResults.children.length > 0) {
-            searchResults.classList.add('active');
-            searchBox.classList.add('results-visible');
+            
+            // Only contract if the search box is empty
+            if (searchBox.value.trim() === '') {
+                searchContainer.classList.remove('expanded');
+            }
         }
     });
     
