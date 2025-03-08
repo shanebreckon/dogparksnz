@@ -72,6 +72,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return bounds.contains([location.lat, location.lng]);
         });
         
+        // Apply type filters if they exist
+        applyTypeFilters();
+        
         // Reset to first page when filter changes
         currentPage = 1;
         
@@ -85,6 +88,45 @@ document.addEventListener('DOMContentLoaded', function() {
         // Render the filtered locations
         renderPage();
     }
+    
+    // Function to apply type filters based on filter chip states
+    function applyTypeFilters() {
+        // Check if filter states are defined
+        const dogParksVisible = typeof window.dogParksVisible !== 'undefined' ? window.dogParksVisible : true;
+        const vetsVisible = typeof window.vetsVisible !== 'undefined' ? window.vetsVisible : true;
+        
+        // Apply type filters
+        visibleLocations = visibleLocations.filter(location => {
+            // location.type === 1 is dog_park, location.type === 2 is vet
+            if (location.type === 1) {
+                return dogParksVisible;
+            } else if (location.type === 2) {
+                return vetsVisible;
+            }
+            return true; // Keep other types if any
+        });
+    }
+    
+    // Function to update the locations list when filter chips are toggled
+    window.updateLocationsListFilters = function() {
+        // Reapply map bounds filtering first to get all locations in the current view
+        const bounds = window.locationMap.getBounds();
+        
+        // Start with all locations and filter by bounds
+        visibleLocations = allLocations.filter(location => {
+            if (!location.lat || !location.lng) return false;
+            return bounds.contains([location.lat, location.lng]);
+        });
+        
+        // Then apply type filters
+        applyTypeFilters();
+        
+        // Reset to first page
+        currentPage = 1;
+        
+        // Render the updated list
+        renderPage();
+    };
     
     // Function to render a specific page of locations
     function renderPage() {

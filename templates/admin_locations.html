@@ -1,0 +1,149 @@
+{% extends "admin_layout.html" %}
+
+{% block title %}Dog Parks NZ - Locations Admin{% endblock %}
+
+{% block additional_styles %}
+<style>
+/* Add custom styles for the locations admin page here */
+.badge {
+    font-size: 0.85rem;
+    padding: 0.35em 0.65em;
+}
+/* DataTables custom styling */
+#locationsTable_filter {
+    text-align: left;
+}
+.dataTables_wrapper .dataTables_length {
+    margin-bottom: 1rem;
+    text-align: right;
+}
+.dataTables_wrapper .dataTables_info {
+    padding-top: 1rem;
+}
+</style>
+<!-- DataTables CSS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Locations Administration</h1>
+    </div>
+    
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        Error loading locations: {{ error }}
+    </div>
+    {% endif %}
+    
+    <div class="card">
+        <div class="card-header">
+            <h5>All Locations</h5>
+        </div>
+        <div class="card-body">
+            {% if locations %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover" id="locationsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Coordinates</th>
+                            <th>Description</th>
+                            <th>Created</th>
+                            <th>Updated</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for location in locations %}
+                        <tr>
+                            <td>{{ location.id }}</td>
+                            <td>{{ location.name }}</td>
+                            <td>
+                                <span class="badge rounded-pill text-bg-secondary" style="background-color: {{ location.location_type.color }} !important;">
+                                    {{ location.location_type.short_name }}
+                                </span>
+                            </td>
+                            <td>{{ location.lat }}, {{ location.lng }}</td>
+                            <td>
+                                {% if location.description %}
+                                <div class="text-truncate" style="max-width: 250px;" title="{{ location.description }}">
+                                    {{ location.description }}
+                                </div>
+                                {% else %}
+                                <em class="text-muted">No description</em>
+                                {% endif %}
+                            </td>
+                            <td>{{ location.created_at.split('T')[0] }}</td>
+                            <td>{{ location.updated_at.split('T')[0] }}</td>
+                            <td>
+                                <a href="{{ url_for('admin_map') }}?edit={{ location.id }}" class="btn btn-sm btn-primary">
+                                    <i class="material-icons" style="font-size: 16px; vertical-align: text-bottom;">edit</i>
+                                    Edit
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                No locations found in the database.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- jQuery (required for DataTables) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- DataTables JS -->
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize DataTable
+        const locationsTable = $('#locationsTable').DataTable({
+            order: [[1, 'asc']], // Sort by name (column index 1) by default
+            columnDefs: [
+                { orderable: false, targets: [7] }, // Disable sorting on Actions column
+                { type: 'natural', targets: [1, 2, 4, 5, 6] }, // Use natural sorting for text columns
+                { type: 'num', targets: [0] } // Use numeric sorting for ID column
+            ],
+            lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+            pageLength: 25,
+            responsive: true,
+            dom: '<"row"<"col-sm-6"f><"col-sm-6"l>><"row"<"col-sm-12"tr>><"row"<"col-sm-5"i><"col-sm-7"p>>',
+            language: {
+                search: "Search locations:",
+                lengthMenu: "Show _MENU_ locations per page",
+                info: "Showing _START_ to _END_ of _TOTAL_ locations",
+                infoEmpty: "No locations found",
+                infoFiltered: "(filtered from _MAX_ total locations)"
+            }
+        });
+        
+        // Format location type badges
+        const typeBadges = document.querySelectorAll('span.badge');
+        typeBadges.forEach(badge => {
+            // Make text white or black based on background color brightness
+            const bgColor = badge.style.backgroundColor;
+            const rgb = bgColor.match(/\d+/g);
+            if (rgb) {
+                const brightness = (parseInt(rgb[0]) * 299 + parseInt(rgb[1]) * 587 + parseInt(rgb[2]) * 114) / 1000;
+                badge.style.color = brightness > 125 ? 'black' : 'white';
+            }
+            
+            // Format the location type name (replace underscores with spaces and capitalize)
+            const typeName = badge.textContent.trim();
+            badge.textContent = typeName.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+        });
+    });
+</script>
+{% endblock %}

@@ -368,6 +368,139 @@
                 transform: rotate(360deg);
             }
         }
+        
+        /* Filter chips */
+        .filter-chips-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            position: absolute;
+            top: 45px;/* Same top position as search container */
+            left: 210px; /* Position to the right of search box's initial width (180px) plus some spacing */
+            z-index: 1000;
+            height: 46px; /* Match the height of the search box (including padding) */
+            align-items: center; /* Vertically center the chips */
+            transform: translateY(-50%);
+        }
+        
+        /* Adjust filter chips position when search is expanded */
+        .search-container.expanded ~ .filter-chips-container {
+            left: 400px; /* Position to the right of expanded search box (370px) plus some spacing */
+        }
+        
+        .filter-chip {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 50px;
+            background-color: white;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            color: #555;
+        }
+        
+        .filter-chip:hover {
+            box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+        }
+        
+        /* Inactive (off) state for filter chips */
+        .filter-chip.inactive {
+            background-color: #f0f0f0;
+            color: #999;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .filter-chip.inactive:hover {
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        
+        .filter-chip.inactive i {
+            opacity: 0.5;
+        }
+        
+        /* Location toast notification */
+        .location-toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 4px;
+            z-index: 1000;
+            max-width: 80%;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        .location-toast.fade-out {
+            animation: fadeOut 0.5s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, 20px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translate(-50%, 0); }
+            to { opacity: 0; transform: translate(-50%, 20px); }
+        }
+        
+        /* Search loading spinner */
+        .search-loading {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            display: none;
+            z-index: 10;
+        }
+        
+        /* Search icon */
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            color: #888;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .search-icon-hidden {
+            display: none !important;
+        }
+        
+        .search-loading-dot {
+            display: none;
+        }
+        
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(170, 170, 170, 0.3);
+            border-radius: 50%;
+            border-top-color: #aaa;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
 <body>
@@ -415,6 +548,19 @@
                 </div>
                 <div class="search-results" id="search-results"></div>
             </div>
+            
+            <!-- Filter chips -->
+            <div class="filter-chips-container">
+                <div class="filter-chip" id="dog-park-chip">
+                    <i class="material-icons" style="color: #2E7D32; font-size: 18px; margin-right: 4px;">pets</i>
+                    <span>Parks</span>
+                </div>
+                <div class="filter-chip" id="vet-chip">
+                    <i class="material-icons" style="color: #1976D2; font-size: 18px; margin-right: 4px;">local_hospital</i>
+                    <span>Vets</span>
+                </div>
+            </div>
+            
             <div id="map"></div>
         </div>
         

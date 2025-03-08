@@ -954,6 +954,100 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     
+    // Filter markers based on location type
+    function filterMarkers(locationType, isVisible) {
+        // Get the marker cluster group
+        let markerCluster;
+        map.eachLayer(function(layer) {
+            if (layer instanceof L.MarkerClusterGroup) {
+                markerCluster = layer;
+            }
+        });
+        
+        if (!markerCluster) return;
+        
+        // Loop through all markers
+        Object.keys(window.locationMarkers).forEach(function(markerId) {
+            const marker = window.locationMarkers[markerId];
+            
+            // Check if this marker matches the location type we're filtering
+            // location.type === 1 is dog_park, location.type === 2 is vet
+            const isMatch = (locationType === 'dog_park' && marker.locationTypeId === 1) || 
+                           (locationType === 'vet' && marker.locationTypeId === 2);
+            
+            if (isMatch) {
+                if (isVisible) {
+                    // If the marker isn't on the map, add it back
+                    if (!map.hasLayer(marker)) {
+                        markerCluster.addLayer(marker);
+                    }
+                } else {
+                    // Remove the marker from the cluster
+                    markerCluster.removeLayer(marker);
+                    
+                    // Also hide the corresponding geometry if it exists
+                    map.eachLayer(function(layer) {
+                        if (layer.locationId === parseInt(markerId) && layer.locationType === marker.locationTypeId) {
+                            layer.setStyle({ opacity: 0, fillOpacity: 0 });
+                        }
+                    });
+                }
+            }
+        });
+        
+        // Update cluster mapping after filtering
+        window.updateClusterMapping();
+        
+        // Update the global filtered state for locations list
+        if (locationType === 'dog_park') {
+            window.dogParksVisible = isVisible;
+        } else if (locationType === 'vet') {
+            window.vetsVisible = isVisible;
+        }
+        
+        // Trigger the locations list to update based on the new filter state
+        if (typeof window.updateLocationsListFilters === 'function') {
+            window.updateLocationsListFilters();
+        }
+    }
+    
+    // Initialize filter chips functionality
+    function initFilterChips() {
+        const dogParkChip = document.getElementById('dog-park-chip');
+        const vetChip = document.getElementById('vet-chip');
+        
+        // Set initial state (both active) and make it globally available
+        window.dogParksVisible = true;
+        window.vetsVisible = true;
+        
+        // Add click event listeners to toggle active/inactive state
+        dogParkChip.addEventListener('click', function() {
+            window.dogParksVisible = !window.dogParksVisible;
+            toggleChipState(dogParkChip, window.dogParksVisible);
+            // Filter map markers based on the state
+            filterMarkers('dog_park', window.dogParksVisible);
+        });
+        
+        vetChip.addEventListener('click', function() {
+            window.vetsVisible = !window.vetsVisible;
+            toggleChipState(vetChip, window.vetsVisible);
+            // Filter map markers based on the state
+            filterMarkers('vet', window.vetsVisible);
+        });
+    }
+    
+    // Toggle chip visual state
+    function toggleChipState(chipElement, isActive) {
+        if (isActive) {
+            chipElement.classList.remove('inactive');
+        } else {
+            chipElement.classList.add('inactive');
+        }
+    }
+    
     // Load all locations when the page loads
     loadLocations();
+    
+    // Initialize filter chips
+    initFilterChips();
 });

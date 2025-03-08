@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dog Parks NZ - Admin{% endblock %}</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet Draw CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <!-- MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <!-- Google Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <!-- Inter font -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <style>
+        /* Global styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        html, body {
+            height: 100%;
+            width: 100%;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+        }
+        
+        body {
+            display: flex;
+            overflow-x: hidden; /* Prevent horizontal scrolling */
+        }
+        
+        .sidebar {
+            width: 72px;
+            height: 100vh;
+            background-color: white;
+            z-index: 1000;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .expanded-sidebar {
+            position: absolute;
+            left: -320px; /* Start off-screen */
+            width: 320px;
+            height: 100vh;
+            background-color: white;
+            z-index: 1001; /* Higher than sidebar */
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease-in-out;
+            padding: 20px;
+        }
+        
+        .expanded-sidebar.active {
+            transform: translateX(320px); /* Slide in */
+        }
+        
+        .hamburger-icon {
+            margin-top: 20px;
+            cursor: pointer;
+            color: #555;
+            transition: color 0.3s ease;
+        }
+        
+        .hamburger-icon:hover {
+            color: #2E7D32;
+        }
+        
+        /* Admin content layout */
+        .admin-content-container {
+            display: flex;
+            flex: 1;
+            height: 100vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .admin-content {
+            flex: 1;
+            padding: 20px;
+            position: relative;
+        }
+        
+        .close-sidebar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            cursor: pointer;
+            color: #555;
+        }
+        
+        .close-sidebar:hover {
+            color: #2E7D32;
+        }
+        
+        .expanded-sidebar h3 {
+            margin-top: 10px;
+            color: #2E7D32;
+            font-weight: bold;
+        }
+        
+        /* Admin menu items */
+        .admin-menu {
+            margin-top: 30px;
+            width: 100%;
+        }
+        
+        .admin-menu-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            margin-bottom: 5px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            text-decoration: none;
+            color: #333;
+        }
+        
+        .admin-menu-item:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .admin-menu-item.active {
+            background-color: #e8f5e9;
+            color: #2E7D32;
+            font-weight: 500;
+        }
+        
+        .admin-menu-item i {
+            margin-right: 15px;
+            color: #555;
+        }
+        
+        .admin-menu-item.active i {
+            color: #2E7D32;
+        }
+        
+        /* Admin sidebar icons */
+        .sidebar-icon {
+            width: 100%;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 5px;
+            cursor: pointer;
+            color: #555;
+            transition: color 0.2s ease;
+        }
+        
+        .sidebar-icon:hover {
+            color: #2E7D32;
+        }
+        
+        .sidebar-icon.active {
+            color: #2E7D32;
+        }
+        
+        /* Back to site button */
+        .back-to-site {
+            margin-top: auto;
+            margin-bottom: 20px;
+            text-decoration: none;
+            color: #555;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 12px;
+        }
+        
+        .back-to-site i {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .back-to-site:hover {
+            color: #2E7D32;
+        }
+    </style>
+    
+    {% block additional_styles %}{% endblock %}
+</head>
+<body>
+    <!-- Expanded sidebar that slides in -->
+    <div class="expanded-sidebar" id="expandedSidebar">
+        <div class="close-sidebar" id="closeSidebar">
+            <i class="material-icons">close</i>
+        </div>
+        <h3>Admin Panel</h3>
+        
+        <div class="admin-menu">
+            <a href="{{ url_for('admin_map') }}" class="admin-menu-item {% if active_page == 'map-admin' %}active{% endif %}">
+                <i class="material-icons">map</i>
+                <span>Map Admin</span>
+            </a>
+            <a href="{{ url_for('admin_locations_page') }}" class="admin-menu-item {% if active_page == 'locations-admin' %}active{% endif %}">
+                <i class="material-icons">place</i>
+                <span>Locations</span>
+            </a>
+            <!-- Additional menu items can be added here -->
+        </div>
+    </div>
+    
+    <div class="sidebar">
+        <!-- Hamburger icon -->
+        <div class="hamburger-icon" id="hamburgerIcon">
+            <i class="material-icons" style="font-size: 32px;">menu</i>
+        </div>
+        
+        <!-- Sidebar icons -->
+        <a href="{{ url_for('admin_map') }}" class="sidebar-icon {% if active_page == 'map-admin' %}active{% endif %}">
+            <i class="material-icons" style="font-size: 28px;">map</i>
+        </a>
+        
+        <a href="{{ url_for('admin_locations_page') }}" class="sidebar-icon {% if active_page == 'locations-admin' %}active{% endif %}">
+            <i class="material-icons" style="font-size: 28px;">place</i>
+        </a>
+        
+        <!-- Back to site link at bottom of sidebar -->
+        <a href="{{ url_for('index') }}" class="back-to-site">
+            <i class="material-icons">home</i>
+            <span>Public Site</span>
+        </a>
+    </div>
+    
+    <div class="admin-content-container">
+        <div class="admin-content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const hamburgerIcon = document.getElementById('hamburgerIcon');
+            const expandedSidebar = document.getElementById('expandedSidebar');
+            const closeSidebar = document.getElementById('closeSidebar');
+            
+            // Toggle expanded sidebar when hamburger icon is clicked
+            hamburgerIcon.addEventListener('click', function() {
+                expandedSidebar.classList.add('active');
+            });
+            
+            // Close expanded sidebar when close button is clicked
+            closeSidebar.addEventListener('click', function() {
+                expandedSidebar.classList.remove('active');
+            });
+        });
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

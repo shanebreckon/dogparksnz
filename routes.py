@@ -1,4 +1,4 @@
-from flask import render_template, request, jsonify
+from flask import render_template, request, jsonify, redirect, url_for
 from app import app, db
 import json
 from models import MapLocation, LocationType, calculate_center_coordinates
@@ -35,8 +35,58 @@ def public():
 
 @app.route('/admin')
 def admin():
-    """Render the admin page with the map drawing application."""
-    return render_template('admin.html')
+    """Redirect to the admin map page."""
+    return redirect(url_for('admin_map'))
+
+@app.route('/admin/map-admin')
+def admin_map():
+    """Render the admin map page."""
+    return render_template('admin_map.html', active_page='map-admin')
+
+@app.route('/admin/locations')
+def admin_locations_page():
+    """Render the admin locations page."""
+    try:
+        # Build SQL query to get all locations with their types
+        sql_query = """
+            SELECT 
+                ml.id, ml.name, ml.description, ml.type, ml.lat, ml.lng, 
+                ml.created_at, ml.updated_at,
+                lt.id as lt_id, lt.short_name, lt.icon, lt.color
+            FROM map_location ml
+            JOIN location_type lt ON ml.type = lt.id
+            ORDER BY ml.name
+        """
+        
+        # Execute the query
+        results = db.session.execute(text(sql_query)).fetchall()
+        
+        # Process results
+        locations = []
+        for row in results:
+            location = {
+                'id': row.id,
+                'name': row.name,
+                'description': row.description,
+                'lat': row.lat,
+                'lng': row.lng,
+                'location_type': {
+                    'id': row.lt_id,
+                    'short_name': row.short_name,
+                    'icon': row.icon,
+                    'color': row.color
+                },
+                'created_at': row.created_at.isoformat() if row.created_at else None,
+                'updated_at': row.updated_at.isoformat() if row.updated_at else None
+            }
+            locations.append(location)
+        
+        return render_template('admin_locations.html', active_page='locations-admin', locations=locations)
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching locations for admin page: {str(e)}")
+        return render_template('admin_locations.html', active_page='locations-admin', 
+                              locations=[], error=str(e))
 
 @app.route('/api/search', methods=['GET'])
 def search_locations():
