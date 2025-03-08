@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <!-- Google Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <!-- Inter font -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
     <!-- Bootstrap CSS -->
@@ -143,7 +145,7 @@
             top: 20px;
             left: 20px; /* 72px sidebar + 10px margin */
             z-index: 1000;
-            width: 300px;
+            width: 370px;
         }
         
         .search-input-wrapper {
@@ -153,14 +155,13 @@
         
         #search-box {
             width: 100%;
-            padding: 14px 22px;
-            padding-right: 40px; /* Make room for the clear button */
+            padding: 14px 40px 14px 45px;
             border: none;
             border-radius: 50px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             font-size: 14px;
             font-family: 'Inter', sans-serif;
-            transition: border-radius 0.2s ease;
+            transition: border-radius 0.2s ease, box-shadow 0.2s ease;
         }
         
         #search-box:focus {
@@ -205,10 +206,31 @@
             width: 100%;
             background: white;
             border-radius: 0 0 20px 20px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 12px -2px rgba(0,0,0,0.4);
             max-height: 300px;
             overflow-y: auto;
             z-index: 1001;
+            /* Modern scrollbar styling */
+            scrollbar-width: thin; /* Firefox */
+            scrollbar-color: rgba(0,0,0,0.2) transparent; /* Firefox */
+        }
+        
+        /* Webkit scrollbar styling (Chrome, Safari, Edge) */
+        .search-results::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .search-results::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .search-results::-webkit-scrollbar-thumb {
+            background-color: rgba(0,0,0,0.2);
+            border-radius: 10px;
+        }
+        
+        .search-results::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(0,0,0,0.3);
         }
         
         .search-results.active {
@@ -232,6 +254,33 @@
         
         .search-result-item:last-child {
             border-bottom: none;
+        }
+        
+        /* No results and suggestions styling */
+        .search-no-results {
+            padding: 10px 15px;
+            color: #666;
+            font-style: italic;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.85em;
+        }
+        
+        .search-suggestions-header {
+            padding: 10px 15px 5px;
+            color: #333;
+            font-weight: 500;
+            font-size: 0.9em;
+        }
+        
+        .search-suggestion-item {
+            padding: 8px 15px 8px 25px;
+            cursor: pointer;
+            color: #0078d7;
+        }
+        
+        .search-suggestion-item:hover {
+            background-color: #f0f7ff;
+            text-decoration: underline;
         }
         
         /* Location toast notification */
@@ -263,6 +312,56 @@
         @keyframes fadeOut {
             from { opacity: 1; transform: translate(-50%, 0); }
             to { opacity: 0; transform: translate(-50%, 20px); }
+        }
+        
+        /* Search loading spinner */
+        .search-loading {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            display: none;
+            z-index: 10;
+        }
+        
+        /* Search icon */
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            color: #888;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .search-icon-hidden {
+            display: none !important;
+        }
+        
+        .search-loading-dot {
+            display: none;
+        }
+        
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(170, 170, 170, 0.3);
+            border-radius: 50%;
+            border-top-color: #aaa;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
@@ -297,16 +396,25 @@
             <!-- Search bar -->
             <div class="search-container">
                 <div class="search-input-wrapper">
+                    <div class="search-icon" id="search-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </div>
+                    <div class="search-loading" id="search-loading">
+                        <div class="spinner"></div>
+                    </div>
                     <input type="text" class="search-box" id="search-box" placeholder="Search">
                     <div class="search-clear" id="search-clear">✕</div>
                 </div>
-                <div class="search-results" id="searchResults"></div>
+                <div class="search-results" id="search-results"></div>
             </div>
             <div id="map"></div>
         </div>
         
         <div class="content-panel">
-            <div id="dog-parks-list"></div>
+            <div id="locations-list"></div>
         </div>
     </div>
     
@@ -316,7 +424,7 @@
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
     <!-- Custom JS -->
     <script src="{{ url_for('static', filename='js/public-map.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/dog_parks.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/locations.js') }}"></script>
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {

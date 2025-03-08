@@ -1,7 +1,7 @@
 from flask import render_template, request, jsonify
 from app import app, db
 import json
-from models import MapLocation, calculate_center_coordinates
+from models import MapLocation, LocationType, calculate_center_coordinates
 from geoalchemy2.functions import ST_GeomFromGeoJSON
 from geoalchemy2.shape import from_shape
 from shapely.geometry import shape
@@ -13,6 +13,7 @@ import shapely.wkt
 from shapely.geometry import mapping
 import requests
 import time
+import difflib
 
 @app.route('/')
 def index():
@@ -35,29 +36,49 @@ def search_locations():
     query = request.args.get('q', '')
     
     if not query or len(query) < 2:
-        return jsonify([])
+        return jsonify({"results": [], "suggestions": []})
     
     locations = []
+    suggestions = []
     
     try:
+        # Get a list of all location names for suggestions if needed
+        all_locations_sql = text("""
+            SELECT name FROM map_location
+        """)
+        all_location_names = [row[0] for row in db.session.execute(all_locations_sql).fetchall()]
+        
         # Search for dog parks in our database
         sql = text("""
             SELECT TOP 10
-                id, name, description, type, 
-                lat, lng
-            FROM map_location
-            WHERE name LIKE :query
-            ORDER BY name
+                ml.id, ml.name, ml.description, ml.type, 
+                ml.lat, ml.lng,
+                lt.short_name as type_name, lt.icon, lt.color
+            FROM map_location ml
+            LEFT JOIN location_type lt ON ml.type = lt.id
+            WHERE LOWER(ml.name) LIKE LOWER(:query)
+            ORDER BY ml.name
         """)
         
         results = db.session.execute(sql, {"query": f"%{query}%"}).fetchall()
         
         for row in results:
+            # Create location_type object with icon and color
+            location_type_info = None
+            if row.type:
+                location_type_info = {
+                    'id': row.type,
+                    'name': row.type_name,
+                    'icon': row.icon,
+                    'color': row.color
+                }
+                
             locations.append({
                 'id': row.id,
                 'name': row.name,
                 'description': row.description,
                 'type': row.type,
+                'location_type': location_type_info,
                 'lat': row.lat,
                 'lng': row.lng,
                 'source': 'database'
@@ -98,6 +119,10 @@ def search_locations():
                             if not name:
                                 continue
                                 
+                            # Check if query is actually part of the name (case insensitive)
+                            if query.lower() not in name.lower():
+                                continue
+                            
                             # Determine the place type
                             place_type = 'Location'
                             if properties.get('city'):
@@ -121,173 +146,268 @@ def search_locations():
                             if geometry['type'] == 'Point' and len(geometry['coordinates']) >= 2:
                                 lng, lat = geometry['coordinates']
                                 
+                                # Create a default location_type for external locations
+                                location_type_info = {
+                                    'id': None,
+                                    'name': place_type,
+                                    'icon': 'place',  # Material Icons map marker
+                                    'color': '#666666'  # Default gray color
+                                }
+                                
                                 locations.append({
                                     'id': None,
                                     'name': name,
                                     'description': description,
                                     'type': place_type,
+                                    'location_type': location_type_info,
                                     'lat': lat,
                                     'lng': lng,
                                     'source': 'photon'
                                 })
         
-        return jsonify(locations)
+        # Generate suggestions based on all location names
+        suggestions = difflib.get_close_matches(query.lower(), [name.lower() for name in all_location_names], n=3, cutoff=0.5)
+        
+        # Convert suggestions back to proper case
+        proper_case_suggestions = []
+        for suggestion in suggestions:
+            # Find the original proper case version
+            for original_name in all_location_names:
+                if original_name.lower() == suggestion:
+                    proper_case_suggestions.append(original_name)
+                    break
+        
+        # If we have no results but need suggestions, use Photon API with relaxed parameters
+        if len(locations) == 0 and len(proper_case_suggestions) < 3:
+            # Use Photon API with more relaxed parameters to find similar locations
+            photon_suggestion_params = {
+                'q': query,
+                'limit': 5,
+                'lang': 'en',
+                'osm_tag': 'place',
+                'bbox': '165.5,-47.5,179.0,-34.0'  # New Zealand bounding box
+            }
+            
+            try:
+                photon_suggestion_response = requests.get('https://photon.komoot.io/api/', params=photon_suggestion_params)
+                
+                if photon_suggestion_response.status_code == 200:
+                    photon_suggestion_data = photon_suggestion_response.json()
+                    
+                    if 'features' in photon_suggestion_data:
+                        for feature in photon_suggestion_data['features']:
+                            if 'properties' in feature:
+                                properties = feature['properties']
+                                
+                                # Skip if not in New Zealand
+                                if properties.get('country') != 'New Zealand':
+                                    continue
+                                
+                                # Get the name
+                                name = properties.get('name')
+                                if not name or name.lower() == query.lower():
+                                    continue
+                                
+                                # Add to suggestions if not already there
+                                if name not in proper_case_suggestions:
+                                    proper_case_suggestions.append(name)
+                                    
+                                # Stop if we have enough suggestions
+                                if len(proper_case_suggestions) >= 3:
+                                    break
+            except Exception as e:
+                app.logger.error(f"Error getting suggestions from Photon API: {str(e)}")
+        
+        # If we have no results but have suggestions, prioritize showing suggestions
+        if len(locations) == 0 and len(proper_case_suggestions) > 0:
+            app.logger.info(f"No results for '{query}', but found suggestions: {proper_case_suggestions}")
+        
+        return jsonify({"results": locations, "suggestions": proper_case_suggestions})
     
     except Exception as e:
         app.logger.error(f"Error in search: {str(e)}")
-        return jsonify([])
+        return jsonify({"success": False, "error": str(e)})
 
 @app.route('/api/locations', methods=['GET'])
-def get_all_locations():
+def get_locations():
     """Get all map locations."""
     try:
-        sql = text("""
+        # Get query parameters
+        type_filter = request.args.get('type')
+        
+        # Build SQL query
+        sql_query = """
             SELECT 
-                id, name, description, type, 
-                geometry.STAsText() as wkt,
-                lat, lng,
-                created_at, updated_at
-            FROM map_location
-        """)
+                ml.id, ml.name, ml.description, ml.type, ml.lat, ml.lng, 
+                ml.created_at, ml.updated_at,
+                lt.id as lt_id, lt.short_name, lt.icon, lt.color
+            FROM map_location ml
+            JOIN location_type lt ON ml.type = lt.id
+        """
         
-        results = db.session.execute(sql).fetchall()
+        params = {}
         
-        locations = []
-        for row in results:
+        # Apply filters if provided
+        if type_filter:
             try:
-                geom = shapely.wkt.loads(row.wkt)
-                geojson = mapping(geom)
-                
-                location_dict = {
-                    'id': row.id,
-                    'name': row.name,
-                    'description': row.description,
-                    'geometry': geojson,
-                    'type': row.type,
-                    'lat': row.lat,
-                    'lng': row.lng,
-                    'created_at': row.created_at.isoformat(),
-                    'updated_at': row.updated_at.isoformat()
-                }
-                locations.append(location_dict)
-            except Exception as e:
-                locations.append({
-                    'id': row.id,
-                    'name': row.name,
-                    'description': row.description,
-                    'type': row.type,
-                    'lat': row.lat,
-                    'lng': row.lng,
-                    'error': f"Error processing geometry: {str(e)}",
-                    'created_at': row.created_at.isoformat(),
-                    'updated_at': row.updated_at.isoformat()
-                })
+                # If it's a numeric ID
+                type_id = int(type_filter)
+                sql_query += " WHERE ml.type = :type_id"
+                params['type_id'] = type_id
+            except ValueError:
+                # If it's a string short_name
+                sql_query += " WHERE lt.short_name = :type_name"
+                params['type_name'] = type_filter
         
-        return jsonify({"success": True, "data": locations}), 200
+        # Execute the query
+        results = db.session.execute(text(sql_query), params).fetchall()
+        
+        # Process results
+        locations_dict = []
+        for row in results:
+            # Get the location ID to fetch geometry
+            location_id = row.id
+            
+            # Get geometry data using SQL Server's specific functions
+            geo_sql = text("SELECT geometry.STAsText() as wkt FROM map_location WHERE id = :id")
+            geo_result = db.session.execute(geo_sql, {"id": location_id}).fetchone()
+            
+            # Process geometry if available
+            geometry_json = None
+            if geo_result and geo_result.wkt:
+                # Convert WKT to Shapely geometry
+                geom = shapely.wkt.loads(geo_result.wkt)
+                
+                # Convert to GeoJSON
+                geometry_json = mapping(geom)
+            
+            # Create location dictionary
+            location = {
+                'id': row.id,
+                'name': row.name,
+                'description': row.description,
+                'type': row.type,
+                'lat': row.lat,
+                'lng': row.lng,
+                'geometry': geometry_json,
+                'location_type': {
+                    'id': row.lt_id,
+                    'short_name': row.short_name,
+                    'icon': row.icon,
+                    'color': row.color
+                },
+                'created_at': row.created_at.isoformat() if row.created_at else None,
+                'updated_at': row.updated_at.isoformat() if row.updated_at else None
+            }
+            
+            locations_dict.append(location)
+        
+        return jsonify({"success": True, "data": locations_dict})
+        
     except Exception as e:
-        error_msg = f"Error fetching locations: {str(e)}"
-        return jsonify({"success": False, "error": error_msg}), 500
+        app.logger.error(f"Error fetching locations: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/locations', methods=['POST'])
 def create_location():
     """Create a new map location."""
     try:
-        data = request.json
+        # Get the JSON data from the request
+        data = request.get_json()
         
-        name = data.get('name')
-        description = data.get('description', '')
-        type = data.get('type')
+        # Validate required fields
+        required_fields = ['name', 'geometry', 'location_type']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"success": False, "error": f"Missing required field: {field}"}), 400
         
-        if not name or not type:
-            return jsonify({"success": False, "error": "Name and type are required"}), 400
+        # Get the location type
+        location_type_input = data['location_type']
         
-        geometry_data = data.get('geometry')
-        if not geometry_data:
-            return jsonify({"success": False, "error": "Geometry is required"}), 400
+        # Check if location_type is a numeric ID or a string name
+        location_type = None
+        if isinstance(location_type_input, int) or location_type_input.isdigit():
+            # If it's a numeric ID, get the location type by ID
+            type_id = int(location_type_input)
+            location_type = LocationType.query.get(type_id)
+        else:
+            # If it's a string, get the location type by short_name
+            location_type = LocationType.query.filter_by(short_name=location_type_input).first()
+        
+        if not location_type:
+            return jsonify({"success": False, "error": f"Invalid location type: {location_type_input}"}), 400
+        
+        # Extract geometry data
+        geometry = data['geometry']
+        
+        # Calculate center point for the geometry
+        lat, lng = calculate_center_coordinates(geometry)
         
         try:
-            if 'type' in geometry_data:
-                if geometry_data['type'] == 'FeatureCollection' and 'features' in geometry_data:
-                    if not geometry_data['features']:
-                        return jsonify({"success": False, "error": "FeatureCollection has no features"}), 400
-                    geometry_data = geometry_data['features'][0]['geometry']
-                elif geometry_data['type'] == 'Feature' and 'geometry' in geometry_data:
-                    geometry_data = geometry_data['geometry']
+            # Convert GeoJSON to WKT
+            # Handle different GeoJSON types
+            if isinstance(geometry, dict) and 'type' in geometry:
+                if geometry['type'].lower() == 'featurecollection' and 'features' in geometry and len(geometry['features']) > 0:
+                    # Use the first feature's geometry
+                    feature = geometry['features'][0]
+                    if 'geometry' in feature:
+                        geom_shape = shape(feature['geometry'])
+                    else:
+                        # If no geometry in feature, try to use the feature itself
+                        geom_shape = shape(feature)
+                elif geometry['type'].lower() == 'feature' and 'geometry' in geometry:
+                    geom_shape = shape(geometry['geometry'])
+                else:
+                    # Try to use the geometry directly
+                    geom_shape = shape(geometry)
+            else:
+                # Not a recognized GeoJSON format
+                geom_shape = shape(geometry)
+                
+            wkt = geom_shape.wkt
             
-            shapely_geom = shape(geometry_data)
-            wkt = shapely_geom.wkt
-            
-            # Calculate center coordinates
-            lat, lng = calculate_center_coordinates(wkt)
-            
+            # Create a SQL query to insert the geography data
             sql = text("""
                 INSERT INTO map_location (name, description, geometry, type, lat, lng, created_at, updated_at)
-                OUTPUT inserted.id
-                VALUES (:name, :description, geography::STGeomFromText(:wkt, 4326), :type, :lat, :lng, GETDATE(), GETDATE())
+                VALUES (:name, :description, geography::STGeomFromText(:wkt, 4326), :type, :lat, :lng, GETUTCDATE(), GETUTCDATE());
             """)
             
-            try:
-                result = db.session.execute(
-                    sql, 
-                    {
-                        'name': name, 
-                        'description': description, 
-                        'wkt': wkt,
-                        'type': type,
-                        'lat': lat,
-                        'lng': lng
-                    }
-                )
-                
-                inserted_id = result.scalar()
-                
-                sql = text("""
-                    SELECT 
-                        id, name, description, type, 
-                        geometry.STAsText() as wkt,
-                        lat, lng,
-                        created_at, updated_at
-                    FROM map_location
-                    WHERE id = :id
-                """)
-                
-                result = db.session.execute(sql, {"id": inserted_id}).fetchone()
-                
-                if result:
-                    geom = shapely.wkt.loads(result.wkt)
-                    geojson = mapping(geom)
-                    
-                    result_dict = {
-                        'id': result.id,
-                        'name': result.name,
-                        'description': result.description,
-                        'geometry': geojson,
-                        'type': result.type,
-                        'lat': result.lat,
-                        'lng': result.lng,
-                        'created_at': result.created_at.isoformat(),
-                        'updated_at': result.updated_at.isoformat()
-                    }
-                    
-                    db.session.commit()
-                    return jsonify({"success": True, "data": result_dict}), 201
-                else:
-                    db.session.rollback()
-                    return jsonify({"success": False, "error": "Failed to retrieve the inserted record"}), 500
-            except SQLAlchemyError as sql_error:
-                db.session.rollback()
-                error_msg = f"Database error: {str(sql_error)}"
-                return jsonify({"success": False, "error": error_msg}), 500
-                
+            # Execute the query with parameters
+            db.session.execute(
+                sql, 
+                {
+                    'name': data['name'],
+                    'description': data.get('description', ''),
+                    'wkt': wkt,
+                    'type': location_type.id,
+                    'lat': lat,
+                    'lng': lng
+                }
+            )
+            
+            # Now get the ID of the newly created location
+            id_sql = text("SELECT IDENT_CURRENT('map_location') AS id")
+            result = db.session.execute(id_sql)
+            location_id = int(result.scalar())
+            
+            # Commit the transaction
+            db.session.commit()
+            
+            # Return the new location
+            return jsonify({"success": True, "data": {"id": location_id}}), 201
+            
         except Exception as e:
-            error_msg = f"Invalid geometry format: {str(e)}"
-            return jsonify({"success": False, "error": error_msg}), 400
+            # Rollback the transaction if an error occurs
+            db.session.rollback()
+            app.logger.error(f"Error creating location: {str(e)}")
+            app.logger.error(traceback.format_exc())
+            return jsonify({"success": False, "error": str(e)}), 500
             
     except Exception as e:
-        if 'db' in locals() and db.session:
-            db.session.rollback()
-        error_msg = f"Error creating location: {str(e)}"
-        return jsonify({"success": False, "error": error_msg}), 500
+        app.logger.error(f"Error creating location: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/locations/<int:location_id>', methods=['GET'])
 def get_location(location_id):
@@ -346,180 +466,113 @@ def get_location(location_id):
 
 @app.route('/api/locations/<int:location_id>', methods=['PUT'])
 def update_location(location_id):
-    """Update a specific map location."""
+    """Update an existing map location."""
     try:
-        data = request.json
-        
-        name = data.get('name')
-        description = data.get('description', '')
-        type = data.get('type')
-        
-        if not name or not type:
-            return jsonify({"success": False, "error": "Name and type are required"}), 400
+        # Get the JSON data from the request
+        data = request.get_json()
         
         # Check if the location exists
-        check_sql = text("SELECT id FROM map_location WHERE id = :id")
-        result = db.session.execute(check_sql, {"id": location_id}).fetchone()
-        
-        if not result:
+        location = MapLocation.query.get(location_id)
+        if not location:
             return jsonify({"success": False, "error": f"Location with ID {location_id} not found"}), 404
         
-        # Handle geometry update if provided
-        geometry_data = data.get('geometry')
-        if geometry_data:
-            try:
-                if 'type' in geometry_data:
-                    if geometry_data['type'] == 'FeatureCollection' and 'features' in geometry_data:
-                        if not geometry_data['features']:
-                            return jsonify({"success": False, "error": "FeatureCollection has no features"}), 400
-                        geometry_data = geometry_data['features'][0]['geometry']
-                    elif geometry_data['type'] == 'Feature' and 'geometry' in geometry_data:
-                        geometry_data = geometry_data['geometry']
-                
-                shapely_geom = shape(geometry_data)
-                wkt = shapely_geom.wkt
-                
-                # Calculate center coordinates
-                lat, lng = calculate_center_coordinates(wkt)
-                print(f"DEBUG: Calculated coordinates for location {location_id}: lat={lat}, lng={lng}")
-                
-                # First update just the geometry
-                geo_sql = text("""
-                    UPDATE map_location
-                    SET geometry = geography::STGeomFromText(:wkt, 4326),
-                        updated_at = GETDATE()
-                    WHERE id = :id
-                """)
-                
-                db.session.execute(geo_sql, {'id': location_id, 'wkt': wkt})
-                db.session.flush()
-                
-                # Then update the other fields including coordinates in a separate statement
-                update_sql = text("""
-                    UPDATE map_location
-                    SET name = :name, 
-                        description = :description, 
-                        type = :type,
-                        lat = :lat,
-                        lng = :lng
-                    WHERE id = :id
-                """)
-                
-                db.session.execute(
-                    update_sql, 
-                    {
-                        'id': location_id,
-                        'name': name, 
-                        'description': description, 
-                        'type': type,
-                        'lat': lat,
-                        'lng': lng
-                    }
-                )
-                db.session.flush()
-                print(f"DEBUG: Updated location {location_id} with new coordinates: lat={lat}, lng={lng}")
-                
-                # Verify the update immediately
-                verify_sql = text("SELECT lat, lng FROM map_location WHERE id = :id")
-                verify_result = db.session.execute(verify_sql, {"id": location_id}).fetchone()
-                print(f"DEBUG: Verified coordinates after update: lat={verify_result.lat}, lng={verify_result.lng}")
-                
-            except Exception as e:
-                db.session.rollback()
-                error_msg = f"Invalid geometry format: {str(e)}"
-                print(f"DEBUG ERROR: {error_msg}")
-                return jsonify({"success": False, "error": error_msg}), 400
+        # Validate required fields
+        required_fields = ['name', 'geometry', 'location_type']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"success": False, "error": f"Missing required field: {field}"}), 400
+        
+        # Get the location type
+        location_type_input = data['location_type']
+        
+        # Check if location_type is a numeric ID or a string name
+        location_type = None
+        if isinstance(location_type_input, int) or (isinstance(location_type_input, str) and location_type_input.isdigit()):
+            # If it's a numeric ID, get the location type by ID
+            type_id = int(location_type_input)
+            location_type = LocationType.query.get(type_id)
         else:
-            # Update without changing geometry
+            # If it's a string, get the location type by short_name
+            location_type = LocationType.query.filter_by(short_name=location_type_input).first()
+        
+        if not location_type:
+            return jsonify({"success": False, "error": f"Invalid location type: {location_type_input}"}), 400
+        
+        # Extract geometry data
+        geometry = data['geometry']
+        
+        # Calculate center point for the geometry
+        lat, lng = calculate_center_coordinates(geometry)
+        
+        try:
+            # Convert GeoJSON to WKT
+            # Handle different GeoJSON types
+            if isinstance(geometry, dict) and 'type' in geometry:
+                if geometry['type'].lower() == 'featurecollection' and 'features' in geometry and len(geometry['features']) > 0:
+                    # Use the first feature's geometry
+                    feature = geometry['features'][0]
+                    if 'geometry' in feature:
+                        geom_shape = shape(feature['geometry'])
+                    else:
+                        # If no geometry in feature, try to use the feature itself
+                        geom_shape = shape(feature)
+                elif geometry['type'].lower() == 'feature' and 'geometry' in geometry:
+                    geom_shape = shape(geometry['geometry'])
+                else:
+                    # Try to use the geometry directly
+                    geom_shape = shape(geometry)
+            else:
+                # Not a recognized GeoJSON format
+                geom_shape = shape(geometry)
+                
+            wkt = geom_shape.wkt
+            
+            # Update the location with SQL
             sql = text("""
                 UPDATE map_location
-                SET name = :name, 
-                    description = :description, 
+                SET 
+                    name = :name,
+                    description = :description,
+                    geometry = geography::STGeomFromText(:wkt, 4326),
                     type = :type,
-                    updated_at = GETDATE()
+                    lat = :lat,
+                    lng = :lng,
+                    updated_at = GETUTCDATE()
                 WHERE id = :id
             """)
             
+            # Execute the query with parameters
             db.session.execute(
                 sql, 
                 {
-                    'id': location_id,
-                    'name': name, 
-                    'description': description, 
-                    'type': type
+                    'name': data['name'],
+                    'description': data.get('description', ''),
+                    'wkt': wkt,
+                    'type': location_type.id,
+                    'lat': lat,
+                    'lng': lng,
+                    'id': location_id
                 }
             )
-        
-        # Fetch the updated record
-        sql = text("""
-            SELECT 
-                id, name, description, type, 
-                geometry.STAsText() as wkt,
-                lat, lng,
-                created_at, updated_at
-            FROM map_location
-            WHERE id = :id
-        """)
-        
-        result = db.session.execute(sql, {"id": location_id}).fetchone()
-        
-        if result:
-            try:
-                geom = shapely.wkt.loads(result.wkt)
-                geojson = mapping(geom)
-                
-                # Double-check that lat/lng are updated correctly
-                if geometry_data and (result.lat is None or result.lng is None or 
-                                     (lat is not None and lng is not None and 
-                                      (abs(result.lat - lat) > 0.0000001 or abs(result.lng - lng) > 0.0000001))):
-                    print(f"DEBUG WARNING: Coordinates not properly updated for location {location_id}")
-                    print(f"Expected: lat={lat}, lng={lng}, Got: lat={result.lat}, lng={result.lng}")
-                    
-                    # Force update with a separate statement
-                    force_update_sql = text("""
-                        UPDATE map_location
-                        SET lat = :lat, lng = :lng
-                        WHERE id = :id
-                    """)
-                    db.session.execute(force_update_sql, {"id": location_id, "lat": lat, "lng": lng})
-                    db.session.flush()
-                    print(f"DEBUG: Forced coordinate update to lat={lat}, lng={lng}")
-                    
-                    # Re-fetch to verify
-                    verify_result = db.session.execute(verify_sql, {"id": location_id}).fetchone()
-                    print(f"DEBUG: Re-verified coordinates: lat={verify_result.lat}, lng={verify_result.lng}")
-                
-                result_dict = {
-                    'id': result.id,
-                    'name': result.name,
-                    'description': result.description,
-                    'geometry': geojson,
-                    'type': result.type,
-                    'lat': result.lat,
-                    'lng': result.lng,
-                    'created_at': result.created_at.isoformat(),
-                    'updated_at': result.updated_at.isoformat()
-                }
-                
-                # Make sure to commit all changes
-                db.session.commit()
-                print(f"DEBUG: Successfully committed all changes for location {location_id}")
-                return jsonify({"success": True, "data": result_dict}), 200
-            except Exception as e:
-                db.session.rollback()
-                error_msg = f"Error processing updated geometry: {str(e)}"
-                print(f"DEBUG ERROR: {error_msg}")
-                return jsonify({"success": False, "error": error_msg}), 500
-        else:
+            
+            # Commit the transaction
+            db.session.commit()
+            
+            # Return the updated location
+            updated_location = MapLocation.query.get(location_id)
+            return jsonify({"success": True, "data": updated_location.to_dict()}), 200
+            
+        except Exception as e:
+            # Rollback the transaction if an error occurs
             db.session.rollback()
-            return jsonify({"success": False, "error": "Failed to retrieve the updated record"}), 500
+            app.logger.error(f"Error updating location: {str(e)}")
+            app.logger.error(traceback.format_exc())
+            return jsonify({"success": False, "error": str(e)}), 500
             
     except Exception as e:
-        if 'db' in locals() and db.session:
-            db.session.rollback()
-        error_msg = f"Error updating location {location_id}: {str(e)}"
-        print(f"DEBUG ERROR: {error_msg}")
-        return jsonify({"success": False, "error": error_msg}), 500
+        app.logger.error(f"Error updating location: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/locations/<int:location_id>', methods=['DELETE'])
 def delete_location(location_id):
@@ -529,8 +582,7 @@ def delete_location(location_id):
         result = db.session.execute(check_sql, {"id": location_id}).fetchone()
         
         if not result:
-            error_msg = f"Location with ID {location_id} not found"
-            return jsonify({"success": False, "error": error_msg}), 404
+            return jsonify({"success": False, "error": f"Location with ID {location_id} not found"}), 404
         
         delete_sql = text("DELETE FROM map_location WHERE id = :id")
         db.session.execute(delete_sql, {"id": location_id})
@@ -545,35 +597,68 @@ def delete_location(location_id):
 
 @app.route('/api/dog_parks', methods=['GET'])
 def get_dog_parks():
-    """Get all dog parks from the database."""
+    """Get all dog parks."""
     try:
-        # Query specifically for dog_park type locations
-        sql = text("""
+        # Build SQL query to get dog parks (type = 1)
+        sql_query = """
             SELECT 
-                id, name, description, type, 
-                lat, lng
-            FROM map_location
-            WHERE type = 'dog_park'
-            ORDER BY name
-        """)
+                ml.id, ml.name, ml.description, ml.type, ml.lat, ml.lng, 
+                ml.created_at, ml.updated_at,
+                lt.id as lt_id, lt.short_name, lt.icon, lt.color
+            FROM map_location ml
+            JOIN location_type lt ON ml.type = lt.id
+            WHERE ml.type = 1
+        """
         
-        results = db.session.execute(sql).fetchall()
+        # Execute the query
+        results = db.session.execute(text(sql_query)).fetchall()
         
-        parks = []
+        # Process results
+        locations_dict = []
         for row in results:
-            parks.append({
+            # Get the location ID to fetch geometry
+            location_id = row.id
+            
+            # Get geometry data using SQL Server's specific functions
+            geo_sql = text("SELECT geometry.STAsText() as wkt FROM map_location WHERE id = :id")
+            geo_result = db.session.execute(geo_sql, {"id": location_id}).fetchone()
+            
+            # Process geometry if available
+            geometry_json = None
+            if geo_result and geo_result.wkt:
+                # Convert WKT to Shapely geometry
+                geom = shapely.wkt.loads(geo_result.wkt)
+                
+                # Convert to GeoJSON
+                geometry_json = mapping(geom)
+            
+            # Create location dictionary
+            location = {
                 'id': row.id,
                 'name': row.name,
                 'description': row.description,
                 'type': row.type,
                 'lat': row.lat,
-                'lng': row.lng
-            })
+                'lng': row.lng,
+                'geometry': geometry_json,
+                'location_type': {
+                    'id': row.lt_id,
+                    'short_name': row.short_name,
+                    'icon': row.icon,
+                    'color': row.color
+                },
+                'created_at': row.created_at.isoformat() if row.created_at else None,
+                'updated_at': row.updated_at.isoformat() if row.updated_at else None
+            }
+            
+            locations_dict.append(location)
         
-        return jsonify(parks)
+        return jsonify(locations_dict)
+        
     except Exception as e:
         app.logger.error(f"Error fetching dog parks: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/test-geography', methods=['POST'])
 def test_geography():
@@ -593,11 +678,10 @@ def test_geography():
         
         sql = text("""
             INSERT INTO map_location (name, description, geometry, type, created_at, updated_at)
-            OUTPUT inserted.id
-            VALUES (:name, :description, geography::STGeomFromText(:wkt, 4326), :type, GETDATE(), GETDATE())
+            VALUES (:name, :description, geography::STGeomFromText(:wkt, 4326), :type, GETUTCDATE(), GETUTCDATE())
         """)
         
-        result = db.session.execute(
+        db.session.execute(
             sql, 
             {
                 'name': name, 
@@ -607,7 +691,10 @@ def test_geography():
             }
         )
         
-        inserted_id = result.scalar()
+        # Get the ID of the newly inserted record
+        id_sql = text("SELECT IDENT_CURRENT('map_location') AS id")
+        result = db.session.execute(id_sql)
+        inserted_id = int(result.scalar())
         
         sql = text("""
             SELECT 
@@ -646,3 +733,135 @@ def test_geography():
             db.session.rollback()
         error_msg = f"Error testing geography: {str(e)}"
         return jsonify({"success": False, "error": error_msg}), 500
+
+# Location Type API Endpoints
+@app.route('/api/location-types', methods=['GET'])
+def get_location_types():
+    """Get all location types."""
+    try:
+        location_types = LocationType.query.all()
+        return jsonify({
+            'success': True,
+            'data': [lt.to_dict() for lt in location_types]
+        })
+    except Exception as e:
+        app.logger.error(f"Error fetching location types: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/location-types/<int:type_id>', methods=['GET'])
+def get_location_type(type_id):
+    """Get a specific location type by ID."""
+    try:
+        location_type = LocationType.query.get(type_id)
+        if not location_type:
+            return jsonify({"success": False, "error": "Location type not found"}), 404
+        
+        return jsonify({
+            'success': True,
+            'data': location_type.to_dict()
+        })
+    except Exception as e:
+        app.logger.error(f"Error fetching location type: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/location-types', methods=['POST'])
+def create_location_type():
+    """Create a new location type."""
+    try:
+        data = request.json
+        
+        # Validate required fields
+        required_fields = ['short_name', 'icon', 'color']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({"success": False, "error": f"Missing required field: {field}"}), 400
+        
+        # Check if short_name already exists
+        existing = LocationType.query.filter_by(short_name=data['short_name']).first()
+        if existing:
+            return jsonify({"success": False, "error": f"Location type with short_name '{data['short_name']}' already exists"}), 400
+        
+        # Create new location type
+        location_type = LocationType(
+            short_name=data['short_name'],
+            icon=data['icon'],
+            color=data['color']
+        )
+        
+        db.session.add(location_type)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'data': location_type.to_dict(),
+            'message': 'Location type created successfully'
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error creating location type: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/location-types/<int:type_id>', methods=['PUT'])
+def update_location_type(type_id):
+    """Update a specific location type."""
+    try:
+        location_type = LocationType.query.get(type_id)
+        if not location_type:
+            return jsonify({"success": False, "error": "Location type not found"}), 404
+        
+        data = request.json
+        
+        # Update fields if provided
+        if 'short_name' in data and data['short_name']:
+            # Check if new short_name already exists for another record
+            existing = LocationType.query.filter_by(short_name=data['short_name']).first()
+            if existing and existing.id != type_id:
+                return jsonify({"success": False, "error": f"Location type with short_name '{data['short_name']}' already exists"}), 400
+            
+            location_type.short_name = data['short_name']
+        
+        if 'icon' in data and data['icon']:
+            location_type.icon = data['icon']
+        
+        if 'color' in data and data['color']:
+            location_type.color = data['color']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'data': location_type.to_dict(),
+            'message': 'Location type updated successfully'
+        })
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error updating location type: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/location-types/<int:type_id>', methods=['DELETE'])
+def delete_location_type(type_id):
+    """Delete a specific location type."""
+    try:
+        location_type = LocationType.query.get(type_id)
+        if not location_type:
+            return jsonify({"success": False, "error": "Location type not found"}), 404
+        
+        # Check if any locations are using this type
+        locations_count = MapLocation.query.filter_by(location_type_id=type_id).count()
+        if locations_count > 0:
+            return jsonify({
+                "success": False, 
+                "error": f"Cannot delete location type that is used by {locations_count} locations. Update or delete those locations first."
+            }), 400
+        
+        db.session.delete(location_type)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Location type deleted successfully'
+        })
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error deleting location type: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500

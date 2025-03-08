@@ -64,6 +64,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Function to apply vet styling to a layer
+    function applyVetStyling(layer) {
+        if (layer.setStyle) {
+            layer.setStyle({
+                color: '#1565C0',
+                fillColor: '#1565C0',
+                fillOpacity: 0.2,
+                weight: 3,
+                opacity: 0.9
+            });
+        }
+    }
+    
+    // Function to apply styling based on location type
+    function applyLocationStyling(layer, locationType) {
+        if (locationType === 'vet') {
+            applyVetStyling(layer);
+        } else {
+            // Default to dog_park styling
+            applyDogParkStyling(layer);
+        }
+    }
+    
     // Initialize draw control
     const drawControl = new L.Control.Draw({
         edit: {
@@ -145,8 +168,22 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // Get form values
         const name = document.getElementById('drawing-name').value;
         const description = document.getElementById('drawing-description').value;
+        const locationType = document.getElementById('location-type').value;
+        
+        // Validate form
+        if (!name) {
+            alert('Please enter a name for your drawing.');
+            return;
+        }
+        
+        // Validate that something has been drawn
+        if (drawnItems.getLayers().length === 0) {
+            alert('Please draw a shape on the map first.');
+            return;
+        }
         
         // Convert drawn items to GeoJSON
         const geoJSON = drawnItems.toGeoJSON();
@@ -156,7 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
             name: name,
             description: description,
             geometry: geoJSON,
-            type: 'dog_park'
+            location_type: locationType
         };
         
         // Determine if we're creating or updating
@@ -306,12 +343,20 @@ document.addEventListener('DOMContentLoaded', function() {
                             const geoJSONLayer = L.geoJSON(drawing.geometry, {
                                 style: function(feature) {
                                     // Check if this is a dog_park type and apply consistent dark green styling
-                                    if (drawing.type === 'dog_park') {
+                                    if (drawing.location_type === 'dog_park') {
                                         return {
                                             color: '#2E7D32', // Dark green to match paw icon
                                             weight: 3,
                                             opacity: 0.9,
                                             fillColor: '#2E7D32',
+                                            fillOpacity: 0.2
+                                        };
+                                    } else if (drawing.location_type === 'vet') {
+                                        return {
+                                            color: '#1565C0', // Blue for vet locations
+                                            weight: 3,
+                                            opacity: 0.9,
+                                            fillColor: '#1565C0',
                                             fillOpacity: 0.2
                                         };
                                     } else {
@@ -334,12 +379,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             geoJSONLayer.eachLayer(layer => {
                                 // Store the drawing ID on the layer for reference
                                 layer.drawingId = drawing.id;
-                                layer.locationType = drawing.type;
+                                layer.locationType = drawing.location_type;
                                 
                                 // Apply the styling directly to each layer based on type
-                                if (drawing.type === 'dog_park') {
-                                    applyDogParkStyling(layer);
-                                }
+                                applyLocationStyling(layer, drawing.location_type);
                                 
                                 nonPointLayers.addLayer(layer);
                             });
@@ -351,8 +394,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // Create a visible marker for the center point
                                 const centerMarker = L.marker(centerLatLng, {
                                     icon: L.divIcon({
-                                        className: 'paw-marker',
-                                        html: '<i class="material-icons">pets</i>',
+                                        className: drawing.location_type === 'vet' ? 'vet-marker' : 'paw-marker',
+                                        html: drawing.location_type === 'vet' ? 
+                                              '<i class="material-icons">local_hospital</i>' : 
+                                              '<i class="material-icons">pets</i>',
                                         iconSize: [30, 30],
                                         iconAnchor: [15, 15]
                                     })
@@ -361,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // Add data to the marker for reference
                                 centerMarker.drawingId = drawing.id;
                                 centerMarker.drawingType = drawing.geometry.type;
-                                centerMarker.locationType = drawing.type; // Store location type
+                                centerMarker.locationType = drawing.location_type; // Store location type
                                 
                                 // Add click handler to zoom to appropriate level for geometry
                                 centerMarker.on('click', function(e) {
@@ -426,8 +471,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Find the associated drawing
                         const drawing = drawings.find(d => d.id === layer.drawingId);
                         
-                        if (drawing && drawing.type === 'dog_park') {
+                        if (drawing && drawing.location_type === 'dog_park') {
                             applyDogParkStyling(layer);
+                        } else if (drawing && drawing.location_type === 'vet') {
+                            applyVetStyling(layer);
                         }
                     }
                 });
@@ -446,7 +493,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Update visibility of all non-point geometries
                     markerToGeometryMap.forEach((geometry, marker) => {
                         // Check if the marker is for a dog_park
-                        const isDogPark = marker.drawingId && window.allDrawings.find(d => d.id === marker.drawingId)?.type === 'dog_park';
+                        const isDogPark = marker.drawingId && window.allDrawings.find(d => d.id === marker.drawingId)?.location_type === 'dog_park';
+                        const isVet = marker.drawingId && window.allDrawings.find(d => d.id === marker.drawingId)?.location_type === 'vet';
                         
                         if (clusteredMarkers.has(marker)) {
                             // If marker is in a cluster, hide the actual geometry
@@ -456,6 +504,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             if (isDogPark) {
                                 // Apply dark green styling for dog parks
                                 applyDogParkStyling(geometry);
+                            } else if (isVet) {
+                                applyVetStyling(geometry);
                             } else {
                                 // Default styling for other types
                                 geometry.setStyle({ 
@@ -601,6 +651,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Set form values
         document.getElementById('drawing-name').value = drawing.name;
         document.getElementById('drawing-description').value = drawing.description;
+        document.getElementById('location-type').value = drawing.location_type || 'dog_park';
         
         // Set current drawing ID
         currentDrawingId = drawing.id;

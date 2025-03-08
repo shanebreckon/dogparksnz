@@ -1,16 +1,17 @@
 document.addEventListener('DOMContentLoaded', function() {
-    const parksList = document.getElementById('dog-parks-list');
-    let allParks = []; // Store all parks data
-    let visibleParks = []; // Store parks visible in the current map view
+    const locationsList = document.getElementById('locations-list');
+    let allLocations = []; // Store all locations data
+    let visibleLocations = []; // Store locations visible in the current map view
     let currentPage = 1;
-    const parksPerPage = 3;
+    const locationsPerPage = 3;
     
     // Add a loading indicator
-    parksList.innerHTML = '<div class="loading">Loading dog parks...</div>';
+    locationsList.innerHTML = '<div class="loading">Loading locations...</div>';
     
-    // Function to fetch all dog parks
-    function fetchDogParks() {
-        fetch('/api/dog_parks')
+    // Function to fetch all locations
+    function fetchLocations() {
+        // Use type parameter to filter by location type if needed
+        fetch('/api/locations')
             .then(response => {
                 if (!response.ok) {
                     throw new Error(`HTTP error! Status: ${response.status}`);
@@ -18,14 +19,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(data => {
-                // Store all parks data
-                allParks = data;
+                // Store all locations data
+                allLocations = data.data || [];
                 
                 // Clear loading indicator
-                parksList.innerHTML = '';
+                locationsList.innerHTML = '';
                 
-                if (allParks.length === 0) {
-                    parksList.innerHTML = '<div class="no-parks">No dog parks found in the database.</div>';
+                if (allLocations.length === 0) {
+                    locationsList.innerHTML = '<div class="no-locations">No locations found in the database.</div>';
                     return;
                 }
                 
@@ -33,17 +34,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 waitForMap();
             })
             .catch(error => {
-                console.error('Error fetching dog parks:', error);
-                parksList.innerHTML = `<div class="error">Error loading dog parks: ${error.message}</div>`;
+                console.error('Error fetching locations:', error);
+                locationsList.innerHTML = `<div class="error">Error loading locations: ${error.message}</div>`;
             });
     }
     
     // Function to wait for map to be initialized
     function waitForMap() {
-        if (window.dogParksMap) {
-            // Map is ready, set up event listeners and filter parks
+        if (window.locationMap) {
+            // Map is ready, set up event listeners and filter locations
             setupMapEvents();
-            filterParksByMapBounds();
+            filterLocationsByMapBounds();
         } else {
             // Check again in 100ms
             setTimeout(waitForMap, 100);
@@ -52,23 +53,23 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Function to set up map event listeners
     function setupMapEvents() {
-        // Filter parks when map moves or zooms
-        window.dogParksMap.on('moveend', filterParksByMapBounds);
-        window.dogParksMap.on('zoomend', filterParksByMapBounds);
+        // Filter locations when map moves or zooms
+        window.locationMap.on('moveend', filterLocationsByMapBounds);
+        window.locationMap.on('zoomend', filterLocationsByMapBounds);
         
         // Initial filter
-        filterParksByMapBounds();
+        filterLocationsByMapBounds();
     }
     
-    // Function to filter parks by current map bounds
-    function filterParksByMapBounds() {
+    // Function to filter locations by current map bounds
+    function filterLocationsByMapBounds() {
         // Get current map bounds
-        const bounds = window.dogParksMap.getBounds();
+        const bounds = window.locationMap.getBounds();
         
-        // Filter parks to only those within the current bounds
-        visibleParks = allParks.filter(park => {
-            if (!park.lat || !park.lng) return false;
-            return bounds.contains([park.lat, park.lng]);
+        // Filter locations to only those within the current bounds
+        visibleLocations = allLocations.filter(location => {
+            if (!location.lat || !location.lng) return false;
+            return bounds.contains([location.lat, location.lng]);
         });
         
         // Reset to first page when filter changes
@@ -81,82 +82,86 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 300); // Wait for clusters to update
         }
         
-        // Render the filtered parks
+        // Render the filtered locations
         renderPage();
     }
     
-    // Function to render a specific page of parks
+    // Function to render a specific page of locations
     function renderPage() {
         // Clear current content
-        parksList.innerHTML = '';
+        locationsList.innerHTML = '';
         
         // Add header with visible count and total count
         const header = document.createElement('h2');
-        header.className = 'parks-header';
-        header.textContent = `Dog Parks (${visibleParks.length} visible of ${allParks.length} total)`;
-        parksList.appendChild(header);
+        header.className = 'locations-header';
+        header.textContent = `Locations (${visibleLocations.length} visible of ${allLocations.length} total)`;
+        locationsList.appendChild(header);
         
-        // Show message if no parks are visible
-        if (visibleParks.length === 0) {
-            const noParkVisible = document.createElement('div');
-            noParkVisible.className = 'no-parks';
-            noParkVisible.textContent = 'No dog parks visible in current map view. Pan or zoom out to see more parks.';
-            parksList.appendChild(noParkVisible);
+        // Show message if no locations are visible
+        if (visibleLocations.length === 0) {
+            const noLocationVisible = document.createElement('div');
+            noLocationVisible.className = 'no-locations';
+            noLocationVisible.textContent = 'No locations visible in current map view. Pan or zoom out to see more locations.';
+            locationsList.appendChild(noLocationVisible);
             return;
         }
         
         // Calculate start and end indices for the current page
-        const startIndex = (currentPage - 1) * parksPerPage;
-        const endIndex = Math.min(startIndex + parksPerPage, visibleParks.length);
+        const startIndex = (currentPage - 1) * locationsPerPage;
+        const endIndex = Math.min(startIndex + locationsPerPage, visibleLocations.length);
         
-        // Get parks for the current page
-        const currentParks = visibleParks.slice(startIndex, endIndex);
+        // Get locations for the current page
+        const currentLocations = visibleLocations.slice(startIndex, endIndex);
         
-        // Create cards for each park in the current page
-        currentParks.forEach(park => {
+        // Create cards for each location in the current page
+        currentLocations.forEach(location => {
             const card = document.createElement('div');
-            card.className = 'park-card';
+            card.className = 'location-card';
             
             // Format description - use a default if not available
-            const description = park.description || 'No description available';
+            const description = location.description || 'No description available';
             
             // Format coordinates for better display
-            const lat = park.lat ? park.lat.toFixed(4) : 'N/A';
-            const lng = park.lng ? park.lng.toFixed(4) : 'N/A';
+            const lat = location.lat ? location.lat.toFixed(4) : 'N/A';
+            const lng = location.lng ? location.lng.toFixed(4) : 'N/A';
+            
+            // Get location type information
+            const locationType = location.location_type ? location.location_type.short_name : 'unknown';
             
             card.innerHTML = `
-                <h3>${park.name}</h3>
+                <h3>${location.name}</h3>
+                <p class="location-type">${locationType}</p>
                 <p>${description}</p>
                 <p class="location">Coordinates: ${lat}, ${lng}</p>
             `;
             
             // Add hover event to pulse the marker
             card.addEventListener('mouseenter', function() {
-                if (window.pulseMarker && park.id) {
-                    window.pulseMarker(park.id);
+                if (window.pulseMarker && location.id) {
+                    window.pulseMarker(location.id);
                 }
             });
             
             // Add mouseout event to stop the animation
             card.addEventListener('mouseleave', function() {
-                if (window.stopMarkerAnimation && park.id) {
-                    window.stopMarkerAnimation(park.id);
+                if (window.stopMarkerAnimation && location.id) {
+                    window.stopMarkerAnimation(location.id);
                 }
             });
             
             // Add to the list
-            parksList.appendChild(card);
+            locationsList.appendChild(card);
         });
         
         // Add pagination controls if needed
-        if (visibleParks.length > parksPerPage) {
+        if (visibleLocations.length > locationsPerPage) {
             addPaginationControls();
         }
     }
     
     // Function to add pagination controls
     function addPaginationControls() {
-        const totalPages = Math.ceil(visibleParks.length / parksPerPage);
+        const totalPages = Math.ceil(visibleLocations.length / locationsPerPage);
         
         // Create pagination container
         const paginationContainer = document.createElement('div');
@@ -201,10 +206,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add buttons container to pagination container
         paginationContainer.appendChild(buttonsContainer);
         
-        // Add pagination container to parks list
-        parksList.appendChild(paginationContainer);
+        // Add pagination container to the list
+        locationsList.appendChild(paginationContainer);
     }
     
-    // Start fetching dog parks
-    fetchDogParks();
+    // Start fetching locations
+    fetchLocations();
 });

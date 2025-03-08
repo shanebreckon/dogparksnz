@@ -15,10 +15,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }).setView([-41.2865, 174.7762], 7); // Default to New Zealand view
     
     // Make map globally available
-    window.dogParksMap = map;
+    window.locationMap = map;
     
     // Create a global object to store markers by location ID
-    window.dogParkMarkers = {};
+    window.locationMarkers = {};
     
     // Create a global object to track which cluster contains each marker
     window.markerClusters = {};
@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             // Reset the marker or cluster appearance
-            const marker = window.dogParkMarkers[markerId];
+            const marker = window.locationMarkers[markerId];
             if (marker && marker._icon) {
                 marker._icon.style.transition = '';
                 marker._icon.style.transform = marker._originalTransform || '';
@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // First stop any existing animation
         window.stopMarkerAnimation(markerId);
         
-        const marker = window.dogParkMarkers[markerId];
+        const marker = window.locationMarkers[markerId];
         if (!marker) return;
         
         // Initialize animation tracking array
@@ -357,8 +357,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Search functionality
     const searchBox = document.getElementById('search-box');
-    const searchResults = document.getElementById('searchResults');
+    const searchResults = document.getElementById('search-results'); 
     const searchClear = document.getElementById('search-clear');
+    const searchLoading = document.getElementById('search-loading');
+    const searchIcon = document.getElementById('search-icon');
     let searchTimeout = null;
     let currentMarker = null;
     
@@ -366,109 +368,201 @@ document.addEventListener('DOMContentLoaded', function() {
     searchBox.addEventListener('input', function() {
         const query = this.value.trim();
         
-        // Show/hide clear button based on input content
-        if (query !== '') {
+        // Show/hide clear button
+        if (query.length > 0) {
             searchClear.classList.add('visible');
+            searchClear.style.display = 'block';
         } else {
             searchClear.classList.remove('visible');
+            searchClear.style.display = 'none';
+            searchResults.innerHTML = '';
+            searchResults.classList.remove('active');
+            searchBox.classList.remove('results-visible');
+            searchLoading.style.display = 'none';
+            searchIcon.classList.remove('search-icon-hidden');
+            searchBox.value = '';
         }
         
-        // Clear any existing timeout
+        // Clear previous timeout
         if (searchTimeout) {
             clearTimeout(searchTimeout);
         }
         
-        // Clear search results if query is empty
-        if (query === '') {
-            searchResults.innerHTML = '';
-            searchResults.classList.remove('active');
-            searchBox.classList.remove('results-visible');
-            return;
-        }
+        // Hide any existing results while typing
+        searchResults.classList.remove('active');
+        searchBox.classList.remove('results-visible');
         
-        // Set a timeout to avoid making too many requests
+        // Set new timeout for search
         searchTimeout = setTimeout(() => {
-            // Make API request to search for locations
-            fetch(`/api/search?q=${encodeURIComponent(query)}`)
-                .then(response => response.json())
-                .then(data => {
-                    // Clear previous results
-                    searchResults.innerHTML = '';
-                    
-                    // If no results, hide the results container
-                    if (data.length === 0) {
-                        searchResults.classList.remove('active');
-                        searchBox.classList.remove('results-visible');
-                        return;
-                    }
-                    
-                    // Display results
-                    data.forEach(location => {
-                        const resultItem = document.createElement('div');
-                        resultItem.className = 'search-result-item';
+            if (query.length >= 2) {
+                // Hide search icon and show loading indicator
+                searchIcon.classList.add('search-icon-hidden');
+                searchLoading.style.display = 'block';
+                searchClear.style.display = 'none';
+                
+                // Make API call to search endpoint
+                fetch(`/api/search?q=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        // Hide loading indicator and show search icon again
+                        searchLoading.style.display = 'none';
+                        searchIcon.classList.remove('search-icon-hidden');
+                        searchClear.style.display = 'block';
                         
-                        // Create name element
-                        const nameElement = document.createElement('div');
-                        nameElement.className = 'result-name';
-                        nameElement.textContent = location.name;
-                        resultItem.appendChild(nameElement);
+                        // Clear previous results
+                        searchResults.innerHTML = '';
                         
-                        // Create description element if available
-                        if (location.description) {
-                            const descElement = document.createElement('div');
-                            descElement.className = 'result-description';
-                            descElement.textContent = location.description;
-                            resultItem.appendChild(descElement);
+                        // Get results and suggestions from the response
+                        const results = data.results || [];
+                        const suggestions = data.suggestions || [];
+                        
+                        // Always show "No matching results found" message when there are no results
+                        if (results.length === 0) {
+                            // Show "No matching results found" message
+                            const noResultsItem = document.createElement('div');
+                            noResultsItem.className = 'search-no-results';
+                            noResultsItem.textContent = 'No matching results found';
+                            searchResults.appendChild(noResultsItem);
+                            
+                            // Show results container with the "No matching results found" message
+                            searchResults.classList.add('active');
+                            searchBox.classList.add('results-visible');
+                            
+                            // If we have suggestions, we would show them here (currently commented out)
+                            if (suggestions.length > 0) {
+                                /* Temporarily commented out "Did you mean" section
+                                const suggestionsHeader = document.createElement('div');
+                                suggestionsHeader.className = 'search-suggestions-header';
+                                suggestionsHeader.textContent = 'Did you mean:';
+                                searchResults.appendChild(suggestionsHeader);
+                                
+                                // Add each suggestion
+                                suggestions.forEach(suggestion => {
+                                    const suggestionItem = document.createElement('div');
+                                    suggestionItem.className = 'search-suggestion-item';
+                                    suggestionItem.textContent = suggestion;
+                                    
+                                    // Add click event to use this suggestion
+                                    suggestionItem.addEventListener('click', function() {
+                                        searchBox.value = suggestion;
+                                        // Trigger a new search with this suggestion
+                                        const event = new Event('input', { bubbles: true });
+                                        searchBox.dispatchEvent(event);
+                                    });
+                                    
+                                    searchResults.appendChild(suggestionItem);
+                                });
+                                */
+                            }
+                            
+                            return;
                         }
                         
-                        // Add click event to fly to location
-                        resultItem.addEventListener('click', function() {
-                            // Fly to the location
-                            map.flyTo([location.lat, location.lng], 14);
+                        // Display results
+                        results.forEach(location => {
+                            const resultItem = document.createElement('div');
+                            resultItem.className = 'search-result-item';
                             
-                            // Clear any existing search results
-                            searchResults.classList.remove('active');
-                            searchBox.classList.remove('results-visible');
-                            searchResults.innerHTML = '';
+                            // Create icon element based on location type
+                            const iconElement = document.createElement('div');
+                            iconElement.className = 'result-icon';
                             
-                            // Format location details for display
-                            let details = formatLocationDetails(location);
+                            // Check if location has location_type info
+                            if (location.location_type && location.location_type.icon) {
+                                // Use Material Icons
+                                const iconSpan = document.createElement('span');
+                                iconSpan.className = 'material-icons';
+                                iconSpan.textContent = location.location_type.icon;
+                                
+                                // Use standard gray color for all icons
+                                iconSpan.style.color = '#666666';
+                                
+                                iconElement.appendChild(iconSpan);
+                            } else {
+                                // Use default map marker icon
+                                const iconSpan = document.createElement('span');
+                                iconSpan.className = 'material-icons';
+                                iconSpan.textContent = 'place';
+                                iconSpan.style.color = '#666666';
+                                
+                                iconElement.appendChild(iconSpan);
+                            }
                             
-                            // Set the search box value to the formatted details
-                            searchBox.value = details;
+                            resultItem.appendChild(iconElement);
                             
-                            // Display location details in a toast or info box
-                            displayLocationInfo(location);
+                            // Create name element that will contain both name and description
+                            const nameElement = document.createElement('div');
+                            nameElement.className = 'result-name';
+                            
+                            // Create the combined text with name in bold and description normal
+                            let combinedText = location.name;
+                            
+                            // Add description if available
+                            if (location.description) {
+                                // Add the description with a space separator
+                                combinedText += ' ' + location.description;
+                            }
+                            
+                            // Use a span for the name part to make it bold
+                            nameElement.innerHTML = `<span style="font-weight: 500;">${location.name}</span>`;
+                            
+                            // Add the description part if available
+                            if (location.description) {
+                                nameElement.innerHTML += ` <span style="color: #666;">${location.description}</span>`;
+                            }
+                            
+                            resultItem.appendChild(nameElement);
+                            
+                            // Add click event to fly to location
+                            resultItem.addEventListener('click', function() {
+                                // Fly to the location
+                                map.flyTo([location.lat, location.lng], 14);
+                                
+                                // Clear any existing search results
+                                searchResults.classList.remove('active');
+                                searchBox.classList.remove('results-visible');
+                                searchResults.innerHTML = '';
+                                
+                                // Format location details for display
+                                let details = formatLocationDetails(location);
+                                
+                                // Set the search box value to the formatted details
+                                searchBox.value = details;
+                                
+                                // Display location details in a toast or info box
+                                displayLocationInfo(location);
+                            });
+                            
+                            // Add to results container
+                            searchResults.appendChild(resultItem);
                         });
                         
-                        // Add to results container
-                        searchResults.appendChild(resultItem);
+                        // Show results container
+                        searchResults.classList.add('active');
+                        searchBox.classList.add('results-visible');
+                    })
+                    .catch(error => {
+                        // Hide loading indicator on error
+                        searchLoading.style.display = 'none';
+                        searchClear.style.display = 'block';
+                        console.error('Error searching for locations:', error);
                     });
-                    
-                    // Show results container
-                    searchResults.classList.add('active');
-                    searchBox.classList.add('results-visible');
-                })
-                .catch(error => {
-                    console.error('Error searching for locations:', error);
-                });
+            }
         }, 300); // 300ms delay
     });
     
     // Clear search box when X is clicked
     searchClear.addEventListener('click', function() {
-        // Clear search box
         searchBox.value = '';
-        
-        // Hide clear button
-        searchClear.classList.remove('visible');
-        
-        // Hide search results
+        this.classList.remove('visible');
         searchResults.innerHTML = '';
         searchResults.classList.remove('active');
         searchBox.classList.remove('results-visible');
+        searchLoading.style.display = 'none';
+        searchClear.style.display = 'none';
+        searchIcon.classList.remove('search-icon-hidden');
         
-        // Focus on search box
+        // Place cursor in the search box
         searchBox.focus();
     });
     
@@ -493,13 +587,50 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Function to apply dog_park styling to a layer
+    // Function to apply styling based on location type
+    function applyLocationStyling(layer, locationTypeId, locationTypeInfo) {
+        // If we have location type info from the API, use that
+        if (locationTypeInfo) {
+            if (layer.setStyle) {
+                layer.setStyle({
+                    color: locationTypeInfo.color,
+                    fillColor: '#FFFFFF',
+                    fillOpacity: 0.8,
+                    weight: 3,
+                    opacity: 0.9
+                });
+            }
+        } else {
+            // Fallback to old method using type ID
+            if (locationTypeId === 2) { // Vet type ID is 2
+                applyVetStyling(layer);
+            } else {
+                // Default to dog_park styling (type ID 1)
+                applyDogParkStyling(layer);
+            }
+        }
+    }
+    
+    // Function to apply dog park styling
     function applyDogParkStyling(layer) {
         if (layer.setStyle) {
             layer.setStyle({
-                color: '#2E7D32',
-                fillColor: '#2E7D32',
-                fillOpacity: 0.2,
+                color: '#2E7D32',  // Green outline
+                fillColor: '#FFFFFF',  // White background
+                fillOpacity: 0.8,
+                weight: 3,
+                opacity: 0.9
+            });
+        }
+    }
+    
+    // Function to apply vet styling
+    function applyVetStyling(layer) {
+        if (layer.setStyle) {
+            layer.setStyle({
+                color: '#1565C0',  // Blue outline
+                fillColor: '#FFFFFF',  // White background
+                fillOpacity: 0.8,
                 weight: 3,
                 opacity: 0.9
             });
@@ -518,7 +649,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const locations = data.data;
                 
-                // Create a marker cluster group
+                // Create a single marker cluster group for all location types
                 const markerCluster = L.markerClusterGroup({
                     showCoverageOnHover: false,
                     maxClusterRadius: 50,
@@ -557,18 +688,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     }, 300);
                 });
                 
-                // Update cluster mapping when map moves
-                map.on('moveend', function() {
-                    // Wait a bit for clusters to update
-                    setTimeout(function() {
-                        window.updateClusterMapping();
-                    }, 300);
-                });
-                
                 locations.forEach(location => {
                     try {
                         // Only process dog_park locations
-                        if (location.type === 'dog_park') {
+                        if (location.type === 1 || location.type === 2) {
                             // Add the GeoJSON to the map with custom styling
                             const geoJSONLayer = L.geoJSON(location.geometry, {
                                 style: function(feature) {
@@ -593,9 +716,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 layer.locationType = location.type;
                                 
                                 // Apply the styling directly to each layer based on type
-                                if (location.type === 'dog_park') {
-                                    applyDogParkStyling(layer);
-                                }
+                                applyLocationStyling(layer, location.type, location.location_type);
                                 
                                 nonPointLayers.addLayer(layer);
                             });
@@ -604,11 +725,18 @@ document.addEventListener('DOMContentLoaded', function() {
                             if (location.lat !== null && location.lng !== null) {
                                 const centerLatLng = L.latLng(location.lat, location.lng);
                                 
+                                // Get location type information
+                                const locationType = location.location_type || { 
+                                    short_name: location.type === 1 ? 'dog_park' : 'vet',
+                                    icon: location.type === 1 ? 'pets' : 'local_hospital',
+                                    color: location.type === 1 ? '#2E7D32' : '#1565C0'
+                                };
+                                
                                 // Create a visible marker for the center point
                                 const centerMarker = L.marker(centerLatLng, {
                                     icon: L.divIcon({
-                                        className: 'paw-marker',
-                                        html: '<i class="material-icons">pets</i>',
+                                        className: locationType.short_name === 'vet' ? 'vet-marker' : 'paw-marker',
+                                        html: `<i class="material-icons" style="color: ${locationType.color}">${locationType.icon}</i>`,
                                         iconSize: [30, 30],
                                         iconAnchor: [15, 15]
                                     })
@@ -617,21 +745,20 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // Add data to the marker for reference
                                 centerMarker.locationId = location.id;
                                 centerMarker.drawingType = location.geometry.type;
-                                centerMarker.locationType = location.type;
+                                centerMarker.locationType = locationType.short_name;
+                                centerMarker.locationTypeId = location.type; // The type field is now the location_type_id
                                 
-                                // Store marker in global object for access from dog_parks.js
-                                if (location.type === 'dog_park') {
-                                    window.dogParkMarkers[location.id] = centerMarker;
-                                    
-                                    // Add hover events for tooltip
-                                    centerMarker.on('mouseover', function() {
-                                        showMarkerTooltip(centerMarker, location.name);
-                                    });
-                                    
-                                    centerMarker.on('mouseout', function() {
-                                        hideMarkerTooltip();
-                                    });
-                                }
+                                // Store marker in global object for access from locations.js
+                                window.locationMarkers[location.id] = centerMarker;
+                                
+                                // Add hover events for tooltip
+                                centerMarker.on('mouseover', function() {
+                                    showMarkerTooltip(centerMarker, location.name);
+                                });
+                                
+                                centerMarker.on('mouseout', function() {
+                                    hideMarkerTooltip();
+                                });
                                 
                                 // Add to cluster
                                 markerCluster.addLayer(centerMarker);
@@ -650,7 +777,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 // Add the marker cluster to the map
-                map.addLayer(markerCluster);
+                markerCluster.addTo(map);
                 
                 // Set up event listeners for marker cluster
                 markerCluster.on('clusterclick', function(a) {
@@ -712,7 +839,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // If there are parks, zoom to fit them all
                 if (markerCluster.getLayers().length > 0) {
-                    map.fitBounds(markerCluster.getBounds(), {
+                    // Create a bounds object that includes both types of locations
+                    const combinedBounds = markerCluster.getBounds();
+                    
+                    map.fitBounds(combinedBounds, {
                         padding: [50, 50]
                     });
                 }
@@ -730,11 +860,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add name
         details.push(location.name);
         
-        // Add type if available
-        if (location.type) {
-            details.push(location.type);
-        }
-        
         // Add description if available
         if (location.description) {
             if (typeof location.description === 'string') {
@@ -743,9 +868,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 details.push(location.description.join(', '));
             }
         }
-        
-        // Always add New Zealand at the end
-        details.push('New Zealand');
         
         // Return comma-separated string
         return details.join(', ');
